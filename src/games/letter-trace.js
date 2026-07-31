@@ -85,7 +85,6 @@ export default class LetterTrace extends Game {
   }
 
   hintPulse() {
-    this.audio.speak(this.introSpeech());
     this.ghost = 1;
     this.idle = 0;
   }

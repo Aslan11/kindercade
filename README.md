@@ -56,6 +56,14 @@ emoji baked into cached sprites — so it stays perfectly sharp on a Retina disp
 and the whole app is a few hundred kilobytes. All sound is synthesised with the
 Web Audio API; speech uses the system voice.
 
+**Built to be listened to.** Every spoken line goes through one queue, so
+phrases follow each other instead of cutting each other off, and the voice is
+chosen by ranking what the device offers rather than taking the browser's
+default — which is usually one of the low-quality "compact" voices. Under
+**⚙️ Settings** a grown-up can pick a specific voice and set the talking speed.
+The best voices on an iPad are an opt-in download: **Settings → Accessibility →
+Spoken Content → Voices**.
+
 **Works offline.** A service worker caches the arcade on first visit, so it keeps
 working on a plane or in the car.
 
@@ -96,7 +104,8 @@ connection. Sound turns on with the first tap (iOS requires a real touch before
 it will play audio).
 
 Under **⚙️ Settings** there are grown-up controls for sound effects, the talking
-voice, and erasing progress.
+voice (including which system voice to use and how fast it talks), and erasing
+progress.
 
 ## Adding a game
 

@@ -11,6 +11,8 @@ const KEY = 'kindercade.save.v1';
 const DEFAULTS = {
   sound: true,
   voice: true,
+  voiceURI: '',          // '' = let the audio kit pick the best one it can find
+  speechRate: 1,         // global speed trim for the talking voice
   stickers: [],          // emoji collected into the sticker book
   games: {},             // id -> { stars, best, plays, level }
   totalStars: 0,
@@ -48,6 +50,13 @@ class Progress {
 
   get voice() { return this.data.voice !== false; }
   set voice(v) { this.data.voice = !!v; this.save(); }
+
+  /** Which system voice to talk with; empty means "pick the best available". */
+  get voiceURI() { return this.data.voiceURI || ''; }
+  set voiceURI(v) { this.data.voiceURI = v || ''; this.save(); }
+
+  get speechRate() { return this.data.speechRate || 1; }
+  set speechRate(v) { this.data.speechRate = Number(v) || 1; this.save(); }
 
   /* ----------------------------------------------------------- game state */
 

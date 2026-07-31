@@ -150,13 +150,33 @@ for (const vp of VIEWPORTS) {
     // somewhere, because everything in this arcade animates.
     const alive = await page.evaluate(async () => {
       const c = document.querySelector('#game-canvas');
-      const g = c.getContext('2d');
-      const grab = () => Array.from(g.getImageData(0, 0, Math.min(c.width, 400), Math.min(c.height, 300)).data
-        .filter((_, i) => i % 401 === 0));
-      const a = grab();
-      await new Promise((r) => setTimeout(r, 260));
-      const b = grab();
-      return a.some((v, i) => v !== b[i]);
+      // Compare whole downscaled frames. Sampling a fixed corner of the canvas
+      // gives false "frozen" reports: the engine letterboxes at wide aspect
+      // ratios, so a corner can be dead margin, and much of the motion in a
+      // settled game is a slow bob somewhere in the middle.
+      const small = document.createElement('canvas');
+      small.width = 96;
+      small.height = 64;
+      const sg = small.getContext('2d', { willReadFrequently: true });
+      const grab = () => {
+        sg.clearRect(0, 0, small.width, small.height);
+        sg.drawImage(c, 0, 0, small.width, small.height);
+        return sg.getImageData(0, 0, small.width, small.height).data;
+      };
+      const differs = (a, b) => {
+        for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return true;
+        return false;
+      };
+      let prev = grab();
+      // Several chances over ~1.5s rather than one 260ms window — a gentle
+      // idle animation can genuinely produce two identical frames in a row.
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await new Promise((r) => setTimeout(r, 300));
+        const next = grab();
+        if (differs(prev, next)) return true;
+        prev = next;
+      }
+      return false;
     });
     if (!alive) fail(`[${vp.name}] ${game.id}: render loop appears frozen`);
 

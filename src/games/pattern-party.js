@@ -36,6 +36,7 @@ export default class PatternParty extends Game {
     this.roundsTotal = 8;
     this.busy = false;
     this.wave = -1;
+    this.hintWave = -1;
     this.flyer = null;
     this.backdrop = { top: '#ffe4f4', bottom: '#fff4d8', hills: ['#f5b8dd', '#e894c8'] };
     this.newRound();
@@ -46,6 +47,7 @@ export default class PatternParty extends Game {
   newRound() {
     this.busy = false;
     this.wave = -1;
+    this.hintWave = -1;
     this.flyer = null;
     this.placed = false;
     this.wrongTries = 0;
@@ -55,9 +57,11 @@ export default class PatternParty extends Game {
     if (this.growing) this.buildGrowing();
     else this.buildRepeating();
 
-    this.setPrompt('What comes next?', { speech: 'What comes next in the pattern?' });
+    // Reading the strip aloud *is* the instruction, so it is the prompt speech
+    // rather than a second line spoken over the top of one.
+    this.setPrompt('What comes next?', { speak: false });
     this.layout();
-    this.tweens.after(0.7, () => this.readPattern(0.85));
+    this.tweens.after(0.6, () => this.speakPrompt());
   }
 
   /** A palette of distinct tokens to build this round's pattern from. */
@@ -149,13 +153,17 @@ export default class PatternParty extends Game {
   /* ---------------------------------------------------------------- answer */
 
   /** Reads the strip aloud, ending on the missing one. */
-  readPattern(rate = 0.9) {
+  speakPrompt({ delay = 0 } = {}) {
     const names = this.strip.map((t) => (this.growing ? `${t.count}` : t.name));
     const spoken = names.slice(-4).join(', ');
-    this.audio.speak(`${spoken}... what comes next?`, { rate });
+    return this.audio.say([
+      { text: spoken, rate: 0.85, gap: 0.3, delay },
+      { text: 'What comes next?', rate: 0.95 },
+    ]);
   }
 
-  hintPulse() { this.readPattern(0.8); }
+  /** Visual only — run a wave along the strip to walk the eye down it. */
+  hintPulse() { this.hintWave = 0; }
 
   choose(i) {
     if (this.busy) return;
@@ -170,7 +178,7 @@ export default class PatternParty extends Game {
         this.tweens.after(0.5, () => {
           const right = this.choices.findIndex((c) => this.sameToken(c, this.answer));
           this.buttons.get(`c${right}`)?.pulse();
-          this.readPattern(0.7);
+          this.speakPrompt();
         });
       }
       return;
@@ -209,6 +217,11 @@ export default class PatternParty extends Game {
 
   update(dt) {
     if (this.wave >= 0) this.wave += dt * 3.4;
+    if (this.hintWave >= 0) {
+      this.hintWave += dt * 3.4;
+      // One pass down the strip, then it settles again.
+      if (this.hintWave > this.strip.length * 0.42 + Math.PI) this.hintWave = -1;
+    }
   }
 
   draw(ctx) {
@@ -216,7 +229,8 @@ export default class PatternParty extends Game {
 
     this.strip.forEach((token, i) => {
       const x = this.stripX + i * this.stripStep;
-      const lift = this.wave >= 0 ? Math.max(0, Math.sin(this.wave - i * 0.42)) * 18 : 0;
+      const w = this.wave >= 0 ? this.wave : this.hintWave;
+      const lift = w >= 0 ? Math.max(0, Math.sin(w - i * 0.42)) * 18 : 0;
       const sway = Math.sin(this.t * 1.3 + i * 0.5) * 5;
       this.drawToken(ctx, token, x, this.stripY + sway - lift, this.cell);
     });

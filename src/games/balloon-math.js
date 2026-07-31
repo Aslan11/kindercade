@@ -93,11 +93,17 @@ export default class BalloonMath extends Game {
       lane: i,
       x: 0, y: 0, r: 0,
       phase: rand(0, TAU),
-      speed: rand(26, 44),
+      // Where in its lane this balloon likes to sit, and how much it drifts
+      // around that spot. Stored per balloon so a rotation does not reshuffle
+      // the sky under the child's finger.
+      heightBias: rand(0.12, 0.78),
+      bobSpeed: rand(0.5, 0.85),
+      bobAmp: rand(9, 16),
+      swayAmp: rand(10, 20),
       color: BALLOON_COLORS[i % BALLOON_COLORS.length],
       popped: false,
       glow: 0,
-      scale: 1,
+      pulse: 0,
       dip: 0,
     }));
   }
@@ -116,15 +122,15 @@ export default class BalloonMath extends Game {
     const n = this.balloons.length;
     const laneW = this.W / n;
     this.balloonR = clamp(laneW * 0.34, 64, 92);
+    // Leave headroom above and enough below for the string to hang.
+    const top = this.skyTop + this.balloonR * 1.2;
+    const bottom = Math.max(top, this.skyBottom - this.balloonR * 1.35);
     this.balloons.forEach((b) => {
       b.r = this.balloonR;
       b.homeX = laneW * (b.lane + 0.5);
-      if (!b.spawned) {
-        b.y = this.skyBottom - rand(0, (this.skyBottom - this.skyTop) * 0.75);
-        b.spawned = true;
-      }
-      b.y = clamp(b.y, this.skyTop + b.r, this.skyBottom);
+      b.homeY = top + (bottom - top) * b.heightBias;
       b.x = b.homeX;
+      b.y = b.homeY;
     });
   }
 
@@ -140,7 +146,10 @@ export default class BalloonMath extends Game {
     }
   }
 
-  hintPulse() { this.audio.speak(this.sum.speech); }
+  /** Visual only — the sum is spoken for us by `speakPrompt`. */
+  hintPulse() {
+    for (const b of this.balloons) if (!b.popped) b.pulse = 1;
+  }
 
   pop(b) {
     if (b.value !== this.sum.answer) {
@@ -175,21 +184,24 @@ export default class BalloonMath extends Game {
 
   /* ------------------------------------------------------------------ frame */
 
+  /**
+   * Balloons hover around their own spot in the sky rather than drifting.
+   *
+   * They used to rise steadily and snap back to the bottom on leaving the top
+   * of the screen, which reads as a glitch rather than as movement — and it
+   * moves the thing you are trying to tap while a five-year-old is aiming at
+   * it. Now they only breathe in place.
+   */
   update(dt) {
-    const span = this.skyBottom - this.skyTop;
     for (const b of this.balloons) {
       if (b.popped) continue;
       b.glow = Math.max(0, b.glow - dt * 0.4);
-      if (b.dip > 0) {
-        b.dip = Math.max(0, b.dip - dt * 1.6);
-        b.y += 90 * dt * b.dip;
-      } else {
-        b.y -= b.speed * dt;
-      }
-      // Off the top: reappear at the bottom. Nothing can ever be missed.
-      if (b.y < this.skyTop - b.r * 1.4) b.y = this.skyBottom + b.r;
-      if (b.y > this.skyBottom + b.r * 2) b.y = this.skyBottom;
-      b.x = b.homeX + Math.sin(this.t * 0.9 + b.phase) * Math.min(34, span * 0.05);
+      b.pulse = Math.max(0, b.pulse - dt * 1.8);
+      if (b.dip > 0) b.dip = Math.max(0, b.dip - dt * 1.2);
+      b.y = b.homeY
+        + Math.sin(this.t * b.bobSpeed + b.phase) * b.bobAmp
+        + Math.sin(b.dip * Math.PI) * 52;
+      b.x = b.homeX + Math.sin(this.t * 0.62 + b.phase * 1.7) * b.swayAmp;
     }
   }
 
@@ -254,6 +266,11 @@ export default class BalloonMath extends Game {
     ctx.save();
     ctx.translate(b.x, b.y);
     ctx.rotate(wob);
+    // A hint from the 🔊 button swells every balloon once.
+    if (b.pulse > 0) {
+      const s = 1 + Math.sin(b.pulse * Math.PI) * 0.09;
+      ctx.scale(s, s);
+    }
 
     // string
     ctx.beginPath();

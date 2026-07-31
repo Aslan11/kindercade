@@ -198,7 +198,6 @@ export default class CookieKitchen extends Game {
   onPointerUp(p) { this.drag.end(p); }
 
   hintPulse() {
-    this.audio.speak(this.promptSpeechText());
     for (const c of this.cookies) if (c.slot < 0) c.wobble = 1;
   }
 

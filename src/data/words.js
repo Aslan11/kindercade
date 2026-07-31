@@ -125,6 +125,38 @@ export const wordsStartingWith = (letter) =>
 /** Letters that actually have picture words behind them (used by the phonics game). */
 export const SOUND_LETTERS = [...new Set(WORDS.map((w) => w.word[0]))].sort();
 
+/*
+ * ── Phonics safety ──────────────────────────────────────────────────────────
+ *
+ * Sound Safari plays a *sound* and asks for a *letter*, which only works for
+ * words where the two actually line up. English is not cooperative about this:
+ * "shoe" does not start with the sound of S, "gem" does not start with the
+ * sound of G, and "cake" very much does not end with the sound of E.
+ *
+ * Asking about those words does not just make the round unfair — it teaches
+ * something false. So the pool is filtered instead, which costs a handful of
+ * words and nothing else.
+ */
+
+/** True when the first letter really is the first sound. */
+export const startsWithItsLetter = (word) => {
+  const w = String(word).toLowerCase();
+  if (/^(sh|ch|th|wh|ph|kn|wr|gn)/.test(w)) return false;   // shoe, sheep, chair
+  if (/^[gc][eiy]/.test(w)) return false;                   // gem — soft g and c
+  if (/^(ow|oi|ou|au|aw|ai|ea|ee|ie|oa|ey|oo)/.test(w)) return false; // owl
+  return true;
+};
+
+/** True when the last letter really is the last sound. */
+export const endsWithItsLetter = (word) => {
+  const w = String(word).toLowerCase();
+  if (/(sh|ch|th|ph|ng)$/.test(w)) return false;  // fish, moth, peach, ring
+  if (/e$/.test(w)) return false;                 // silent e and long e: cake, bee
+  if (/[aiouwy]$/.test(w)) return false;          // zebra, candy, cow, key
+  if (/r$/.test(w)) return false;                 // star, tiger — a vowel, not /r/
+  return true;
+};
+
 export const ALPHABET = 'abcdefghijklmnopqrstuvwxyz'.split('');
 export const VOWELS = ['a', 'e', 'i', 'o', 'u'];
 export const CONSONANTS = ALPHABET.filter((c) => !VOWELS.includes(c));
@@ -134,6 +166,21 @@ export const CONSONANTS = ALPHABET.filter((c) => !VOWELS.includes(c));
  * *letter name* ("bee"), which is what we want for spelling, but the phonics
  * game needs the *sound* ("buh"), so we spell it phonetically for the voice.
  */
+/**
+ * How each letter is *named* out loud, for when the name is what's wanted —
+ * spelling a word out, or asking a child to find a particular letter.
+ *
+ * Asked to read a bare "A", most engines produce the unstressed article ("uh")
+ * rather than the letter name, and "G"/"J" and "M"/"N" come out swapped often
+ * enough to matter. Spelling the names phonetically is the only reliable fix.
+ */
+export const LETTER_NAME = {
+  a: 'ay', b: 'bee', c: 'see', d: 'dee', e: 'ee', f: 'eff', g: 'jee', h: 'aitch',
+  i: 'eye', j: 'jay', k: 'kay', l: 'ell', m: 'em', n: 'en', o: 'oh', p: 'pee',
+  q: 'cue', r: 'ar', s: 'ess', t: 'tee', u: 'you', v: 'vee', w: 'double you',
+  x: 'ex', y: 'why', z: 'zee',
+};
+
 export const LETTER_SOUND = {
   a: 'ah', b: 'buh', c: 'kuh', d: 'duh', e: 'eh', f: 'fff', g: 'guh', h: 'huh',
   i: 'ih', j: 'juh', k: 'kuh', l: 'lll', m: 'mmm', n: 'nnn', o: 'ah', p: 'puh',
