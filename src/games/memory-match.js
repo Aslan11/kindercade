@@ -109,8 +109,9 @@ export default class MemoryMatch extends Game {
     }
   }
 
+  /** Visual only — the prompt is spoken for us. Nudge the unmatched cards. */
   hintPulse() {
-    this.audio.speak('Find two cards that go together.');
+    for (const card of this.cards) if (!card.matched) card.pop = 0.6;
   }
 
   reveal(card) {

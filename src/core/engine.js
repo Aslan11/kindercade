@@ -245,7 +245,7 @@ export class Game {
     }));
     this.speakBtn = this.hud.add(new Button({
       x: 200, y: 76, circle: true, radius: 42, emoji: '🔊', color: '#7fd1ff',
-      onTap: () => { this.speakPrompt(); this.hintPulse(); },
+      onTap: () => this.replayPrompt(),
     }));
   }
 
@@ -378,19 +378,55 @@ export class Game {
 
   /* --------------------------------------------------------------- helpers */
 
-  /** Set the on-screen instruction and (optionally) speak it. */
+  /**
+   * Set the on-screen instruction and (optionally) speak it.
+   *
+   * `text` is read by a grown-up; `speech` is what the child hears. Keep them
+   * separate whenever the on-screen text would give the answer away — a banner
+   * reading "Spell nut" turns a spelling game into copying.
+   */
   setPrompt(text, { speak = true, speech = null, delay = 0 } = {}) {
     this.prompt = text;
     this.promptSpeech = speech || text;
-    if (speak) this.audio.speak(this.promptSpeech, { delay });
+    if (speak) this.speakPrompt({ delay });
   }
 
-  speakPrompt() {
-    if (this.promptSpeech || this.prompt) this.audio.speak(this.promptSpeech || this.prompt);
+  /**
+   * Say the instruction. This is the *only* place a game should speak its
+   * prompt — override it when the prompt is a sequence rather than one line.
+   */
+  speakPrompt({ delay = 0 } = {}) {
+    const line = this.promptSpeech || this.prompt;
+    if (line) this.audio.speak(line, { delay });
   }
 
-  /** Subclasses override to draw attention to the next thing to touch. */
+  /**
+   * Subclasses override to draw attention to the next thing to touch.
+   *
+   * Visual only — it runs alongside `speakPrompt()`, so anything spoken here
+   * lands on top of the instruction and both get chopped up.
+   */
   hintPulse() {}
+
+  /**
+   * Wait for a spoken line to finish before moving on, within limits.
+   *
+   * `min` keeps a celebration on screen long enough to register even when the
+   * talking voice is switched off, and `max` makes sure a device with broken or
+   * missing speech can never hold a round open. Both run on the game's own
+   * clock, so leaving mid-sentence simply stops everything.
+   */
+  afterSpeech(spoken, { min = 1.6, max = 7 } = {}) {
+    const at = (s) => new Promise((done) => this.tweens.after(s, done));
+    return Promise.all([at(min), Promise.race([spoken, at(max)])]);
+  }
+
+  /** The 🔊 button: repeat the instruction and point at what to do. */
+  replayPrompt() {
+    this.audio.stopSpeech();
+    this.speakPrompt();
+    this.hintPulse();
+  }
 
   /** Standard positive feedback. */
   cheer(x = this.cx, y = this.cy, text = null) {

@@ -44,6 +44,8 @@ function armAudio() {
     audio.unlock();
     audio.setMuted(!progress.sound);
     audio.setVoice(progress.voice);
+    audio.setPreferredVoice(progress.voiceURI);
+    audio.setSpeechRate(progress.speechRate);
     el.bootTap.hidden = true;
     window.removeEventListener('pointerdown', unlock);
     window.removeEventListener('keydown', unlock);
@@ -152,6 +154,64 @@ function openStickerBook() {
     <div class="sticker-grid">${grid}</div>`);
 }
 
+/**
+ * Which voices are on offer depends entirely on the device, and on iPadOS the
+ * good ones are an opt-in download the grown-up has to go and fetch. Say so
+ * rather than leaving them to wonder why it sounds the way it does.
+ */
+function voiceHint() {
+  const isApple = /iPad|iPhone|Macintosh/.test(navigator.userAgent);
+  return isApple
+    ? 'iPad: add better voices under Settings → Accessibility → Spoken Content → Voices'
+    : 'Voices come from your device — some sound much better than others';
+}
+
+/** Fill the voice picker with the ranked list, best first. */
+function buildVoicePicker() {
+  const sel = $('#voice-pick');
+  if (!sel) return;
+
+  const render = () => {
+    const voices = audio.listVoices();
+    if (!voices.length) {
+      sel.innerHTML = '<option value="">Loading voices…</option>';
+      return;
+    }
+    sel.innerHTML = ['<option value="">Best available</option>']
+      .concat(voices.map((v) => {
+        const label = `${v.name}${v.good ? ' ✨' : ''}`;
+        const on = v.uri === progress.voiceURI ? ' selected' : '';
+        return `<option value="${v.uri.replace(/"/g, '&quot;')}"${on}>${label}</option>`;
+      }))
+      .join('');
+  };
+
+  render();
+  // Chrome and Edge stream their best voices in a few seconds late, so the list
+  // has to be able to fill itself in after the sheet is already open.
+  if ('speechSynthesis' in window) {
+    speechSynthesis.addEventListener('voiceschanged', render, { once: true });
+  }
+
+  sel.addEventListener('change', () => {
+    progress.voiceURI = sel.value;
+    audio.setPreferredVoice(sel.value);
+    audio.speak('Hello! Shall we play a game?');
+  });
+
+  $('#try-voice')?.addEventListener('click', () => {
+    audio.unlock();
+    audio.speak('Hello! Shall we play a game?');
+  });
+
+  const rate = $('#voice-rate');
+  rate?.addEventListener('change', () => {
+    progress.speechRate = Number(rate.value);
+    audio.setSpeechRate(progress.speechRate);
+    audio.speak('That is how fast I will talk.');
+  });
+}
+
 function openSettings() {
   audio.tap();
   openSheet(`
@@ -165,7 +225,21 @@ function openSettings() {
       <div>Talking<small>Reads every instruction and word out loud</small></div>
       <button class="toggle" id="t-voice" role="switch" aria-checked="${progress.voice}" aria-label="Talking"></button>
     </div>
+    <div class="setting-row stacked">
+      <div>Voice<small>${voiceHint()}</small></div>
+      <div class="voice-controls">
+        <select id="voice-pick" aria-label="Talking voice"></select>
+        <button class="try-voice" id="try-voice" type="button">Try it</button>
+      </div>
+    </div>
+    <div class="setting-row stacked">
+      <div>Talking speed<small>Slower can be easier to follow</small></div>
+      <input type="range" id="voice-rate" min="0.7" max="1.25" step="0.05"
+        value="${progress.speechRate}" aria-label="Talking speed" />
+    </div>
     <button class="danger" id="reset-progress" type="button">Erase all stars and stickers</button>`);
+
+  buildVoicePicker();
 
   const bind = (id, get, set) => {
     const btn = $(`#${id}`);

@@ -14,7 +14,7 @@ import { DragController } from '../core/input.js';
 import { candyRect, drawEmoji, bubbleText, softText, roundRect } from '../core/art.js';
 import { Ease } from '../core/anim.js';
 import { shuffle, pick, clamp, dist, sampleAvoiding } from '../core/util.js';
-import { WORDS, tierForLevel, LETTER_SOUND, ALPHABET, PRAISE, ENCOURAGE } from '../data/words.js';
+import { WORDS, tierForLevel, LETTER_SOUND, LETTER_NAME, ALPHABET, PRAISE, ENCOURAGE } from '../data/words.js';
 
 export default class WordBuilder extends Game {
   static meta = {
@@ -80,17 +80,26 @@ export default class WordBuilder extends Game {
     this.busy = false;
     this.wave = -1;
     this.hintsUsed = 0;
-    this.setPrompt(`Spell ${word}`, { speak: false });
+    // The banner must never name the word. Printing "Spell nut" above a tray
+    // containing n, u and t turns spelling-from-sound into copying, which is a
+    // different and much easier skill.
+    this.setPrompt('Spell the word', { speak: false });
     this.layout();
-    this.tweens.after(0.3, () => this.sayWord());
+    this.tweens.after(0.3, () => this.speakPrompt());
   }
 
-  sayWord() {
-    this.audio.speak(this.entry.word, { rate: 0.7 });
-    this.tweens.after(1.1, () => this.audio.speak(`Can you spell ${this.entry.word}?`, { rate: 0.85 }));
+  /** The word is *heard*, never shown — that is the whole exercise. */
+  speakPrompt({ delay = 0 } = {}) {
+    return this.audio.say([
+      { text: this.entry.word, rate: 0.7, gap: 0.35, delay },
+      { text: `Can you spell ${this.entry.word}?`, rate: 0.9 },
+    ]);
   }
 
-  hintPulse() { this.sayWord(); }
+  /** Visual only — bounce the picture and jiggle the tray. */
+  hintPulse() {
+    for (const t of this.tiles) if (t.slot < 0) t.wobble = Math.max(t.wobble, 1);
+  }
 
   /* ---------------------------------------------------------------- layout */
 
@@ -189,7 +198,10 @@ export default class WordBuilder extends Game {
     if (!tile) return;
     this.hintsUsed++;
     this.audio.tap();
-    this.audio.speak(`Find ${tile.letter.toUpperCase()}. ${LETTER_SOUND[tile.letter]}`);
+    this.audio.say([
+      { text: `Find ${LETTER_NAME[tile.letter] || tile.letter}`, rate: 0.85, gap: 0.25 },
+      { text: LETTER_SOUND[tile.letter] || tile.letter, rate: 0.75 },
+    ]);
     tile.wobble = 1.6;
     slot.glow = 1;
     // A little hop toward the slot, then back — showing, not doing.
@@ -213,15 +225,20 @@ export default class WordBuilder extends Game {
     this.fx.confetti(this.cx, this.slots[0].y, 40, { up: true });
 
     // Spell it out letter by letter, lighting each slot as it is named.
-    this.audio.spellOut(this.entry.word, {
+    const spelling = this.audio.spellOut(this.entry.word, {
       onLetter: (i) => {
         const s = this.slots[i];
         if (s) { s.glow = 1; this.fx.sparkle(s.x + s.w / 2, s.y + s.h / 2, 8, { color: '#ffe9a8' }); }
       },
     });
 
-    const dwell = (this.entry.word.length + 2.2) * 0.55;
-    this.tweens.after(dwell, () => {
+    // Move on when the spelling has actually finished rather than when a
+    // guessed-at timer says it should have — how long a voice takes to say five
+    // letters varies enormously between platforms.
+    this.afterSpeech(spelling, { min: 1.8, max: 9 }).then(() => {
+      // These timers only run while this game is running, so a child who leaves
+      // mid-celebration never gets dragged into another round.
+      if (this.finished) return;
       this.audio.speak(pick(PRAISE));
       if (this.roundsDone >= this.roundsTotal) this.finishRound({ title: pick(PRAISE) });
       else this.newRound();

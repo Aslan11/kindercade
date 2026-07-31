@@ -72,7 +72,6 @@ export default class JigsawGarden extends Game {
   }
 
   hintPulse() {
-    this.audio.speak(`Put the pieces in the frame to finish the ${this.scene.name}.`);
     for (const p of this.pieces) if (!p.locked) p.wobble = 1;
   }
 

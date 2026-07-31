@@ -337,6 +337,51 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .setting-row:last-of-type { border-bottom: none; }
 .setting-row small { display: block; font-size: 15px; font-weight: 700; color: var(--ink-soft); }
 
+/* Rows whose control is too wide to sit beside its label on a phone. */
+.setting-row.stacked {
+  flex-wrap: wrap;
+}
+.setting-row.stacked > div:first-child { flex: 1 1 220px; }
+
+.voice-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.voice-controls select {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 52px;
+  padding: 0 14px;
+  border-radius: 16px;
+  border: 3px solid rgba(44, 35, 64, 0.14);
+  background: #fff;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--ink);
+}
+.try-voice {
+  flex: none;
+  height: 52px;
+  padding: 0 18px;
+  border-radius: 16px;
+  background: #7fd1ff;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 900;
+  box-shadow: 0 4px 0 rgba(44, 35, 64, 0.18);
+}
+.try-voice:active { transform: translateY(2px); box-shadow: 0 2px 0 rgba(44, 35, 64, 0.18); }
+
+#voice-rate {
+  flex: 1 1 240px;
+  height: 52px;
+  accent-color: #3ddc97;
+}
+
 .toggle {
   position: relative;
   width: 92px;
