@@ -62,13 +62,19 @@ working on a plane or in the car.
 ## Running it
 
 ```bash
-npm start          # http://localhost:8080 — plain static server, same as Pages
-npm run check      # parse + contract checks (this is what CI runs)
-npm run smoke      # boots every game in Chromium and fails on blank screens
-npm run icons      # regenerate the app icons from tools/make-icons.mjs
+npm start            # http://localhost:8080 — plain static server, same as Pages
+npm run check        # parse + contract checks (this is what CI runs)
+npm run smoke        # boots every game in Chromium; fails on blank or frozen screens
+npm run playthrough  # plays all nine games to the results screen and checks scoring
+npm test             # all three
+npm run icons        # regenerate the app icons from tools/make-icons.mjs
 ```
 
 There is no build step. What is in the repository is what the browser runs.
+
+`check` is dependency-free and runs in CI. `smoke` and `playthrough` drive a real
+Chromium via Playwright, so they run locally where a browser is available. Add
+`SHOTS=1` to either to write screenshots to `.smoke/`.
 
 ## Deploying
 

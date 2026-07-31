@@ -84,15 +84,20 @@ export class Button {
         { pressed: this.press.value, stroke: 'rgba(255,255,255,0.8)', strokeWidth: 4, glow: this.glow });
       const oy = this.press.value * 8;
       let tx = this.x + this.w / 2;
+      let labelW = this.w * 0.8;
       if (this.emoji && this.label) {
-        const gap = this.h * 0.52;
-        drawEmoji(ctx, this.emoji, this.x + this.h * 0.5, this.y + this.h / 2 - oy, this.h * 0.52);
-        tx = this.x + this.h * 0.5 + gap * 0.6 + (this.w - this.h - gap * 0.6) / 2;
+        // Emoji hugs the left edge; the label centres in what is left, so the
+        // two never collide however long the label is.
+        const iconX = this.x + this.h * 0.42;
+        drawEmoji(ctx, this.emoji, iconX, this.y + this.h / 2 - oy, this.h * 0.48);
+        const textLeft = this.x + this.h * 0.78;
+        tx = (textLeft + this.x + this.w - 12) / 2;
+        labelW = this.x + this.w - 12 - textLeft;
       } else if (this.emoji) {
         drawEmoji(ctx, this.emoji, tx, this.y + this.h / 2 - oy, this.h * 0.58);
       }
       if (this.label) {
-        const size = this.fontSize || fitFontSize(ctx, this.label, this.w * 0.78, this.h * 0.44);
+        const size = this.fontSize || fitFontSize(ctx, this.label, labelW, this.h * 0.44);
         bubbleText(ctx, this.label, tx, this.y + this.h / 2 - oy + (this.sublabel ? -this.h * 0.1 : 0), size,
           { fill: this.textColor, stroke: shade(this.color, -0.45) });
       }
@@ -292,9 +297,10 @@ export class ResultsPanel {
     for (let i = 0; i < 3; i++) {
       const sx = W / 2 + (i - 1) * sgap;
       const earned = i < this.shownStars;
-      // Each star lands with a little overshoot as it is awarded.
+      // Each star lands with a little overshoot as it is awarded — kept small
+      // enough that a mid-flight star never overlaps its neighbours.
       const age = clamp((this.t - 0.5 - i * 0.42) / 0.42, 0, 1);
-      const bump = earned ? 1 + Math.max(0, 1 - age) * 0.5 : 1;
+      const bump = earned ? 1 + Math.max(0, 1 - age) * 0.28 : 1;
       goldStar(ctx, sx, this.starsY, this.starR * bump,
         { filled: earned, glow: earned ? 1 : 0, rot: earned ? (1 - age) * 1.2 : 0 });
     }

@@ -8,7 +8,9 @@
     "start": "node tools/serve.mjs",
     "check": "node tools/check.mjs",
     "icons": "node tools/make-icons.mjs",
-    "smoke": "node tools/smoke.mjs"
+    "smoke": "node tools/smoke.mjs",
+    "playthrough": "node tools/playthrough.mjs",
+    "test": "node tools/check.mjs && node tools/smoke.mjs && node tools/playthrough.mjs"
   },
   "engines": {
     "node": ">=20"

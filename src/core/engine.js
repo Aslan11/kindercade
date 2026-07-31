@@ -273,8 +273,10 @@ export class Game {
   layout() {}
   /** Per-frame logic. */
   update(_dt) {}
-  /** Per-frame drawing of game content (HUD is drawn for you, on top). */
+  /** Per-frame drawing of game content. Buttons and the HUD draw on top of this. */
   draw(_ctx) {}
+  /** Drawn above `this.buttons` — for anything that must cover them. */
+  drawOverlay(_ctx) {}
   /** Cleanup — remove listeners, cancel timers. */
   destroy() {}
 
@@ -331,6 +333,8 @@ export class Game {
     ctx.translate(shake.x, shake.y);
     this.drawBackground(ctx);
     this.draw(ctx);
+    this.buttons.draw(ctx);
+    this.drawOverlay(ctx);
     this.fx.draw(ctx);
     ctx.restore();
     this.drawHud(ctx);

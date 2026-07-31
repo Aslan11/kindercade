@@ -21,6 +21,7 @@ export default class MyGame extends Game {
   layout()      { /* all positioning — re-runs on rotate/resize */ }
   update(dt)    { /* per-frame logic, dt in seconds */ }
   draw(ctx)     { /* per-frame drawing of game content */ }
+  drawOverlay(ctx) { /* optional: drawn above this.buttons */ }
   destroy()     { /* release anything init() acquired */ }
 }
 ```
@@ -101,8 +102,9 @@ onTap(p) {}           // fired on lift when the finger barely moved
 ```
 
 Buttons added to `this.buttons` are routed automatically — those callbacks only
-fire when nothing else consumed the touch. Use `DragController` from
-`../core/input.js` for drag-and-drop.
+fire when nothing else consumed the touch — and are drawn for you, above
+whatever `draw()` painted. Use `DragController` from `../core/input.js` for
+drag-and-drop.
 
 ## Drawing
 

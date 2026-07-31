@@ -195,6 +195,9 @@ function ensureEngine() {
   if (!engine) {
     engine = new Engine(el.canvas);
     engine.onExit = () => { location.hash = '#/'; };
+    // Handle for the automated tests (tools/smoke.mjs, tools/playthrough.mjs),
+    // which need to drive a game to completion without guessing at pixels.
+    window.kindercade = { engine, progress, GAMES, get game() { return engine.game; } };
   }
   return engine;
 }
