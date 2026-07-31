@@ -6,8 +6,8 @@
  * arcade should be forgiving by construction.
  */
 
-import { TAU, clamp, pointInRect, pointInCircle, withAlpha, shade } from './util.js';
-import { Spring, Ease } from './anim.js';
+import { clamp, pointInRect, pointInCircle, withAlpha, shade } from './util.js';
+import { Spring } from './anim.js';
 import {
   candyRect, candyCircle, bubbleText, softText, roundRect, glassPanel,
   drawEmoji, goldStar, font, Palette, fitFontSize, starPath,
@@ -220,19 +220,26 @@ export class ResultsPanel {
     this.pop = new Spring(0, 190, 17);
     this.buttons = new ButtonLayer();
 
-    const bw = 240, bh = 104, gap = 26;
-    const total = bw * 3 + gap * 2;
-    const bx = W / 2 - total / 2;
-    const by = H * 0.72;
-    this.homeBtn = this.buttons.add(new Button({
-      x: bx, y: by, w: bw, h: bh, emoji: '🏠', label: 'Home', color: '#8a8fb5', onTap: onHome,
+    // Everything is positioned relative to the panel rect so the whole dialog
+    // stays inside its own card at any aspect ratio.
+    const pw = Math.min(900, W * 0.84);
+    const ph = Math.min(640, H * 0.76);
+    this.panel = { x: W / 2 - pw / 2, y: H * 0.48 - ph / 2, w: pw, h: ph };
+    this.titleY = this.panel.y + ph * 0.13;
+    this.starsY = this.panel.y + ph * 0.35;
+    this.stickerY = this.panel.y + ph * 0.59;
+    this.starR = Math.min(64, ph * 0.105);
+
+    const bw = Math.min(238, (pw - 4 * 22) / 3);
+    const bh = 104, gap = 22;
+    const bx = W / 2 - (bw * 3 + gap * 2) / 2;
+    const by = this.panel.y + ph - bh - ph * 0.075;
+    const mk = (i, emoji, label, color, onTap) => this.buttons.add(new Button({
+      x: bx + i * (bw + gap), y: by, w: bw, h: bh, emoji, label, color, onTap,
     }));
-    this.againBtn = this.buttons.add(new Button({
-      x: bx + bw + gap, y: by, w: bw, h: bh, emoji: '🔁', label: 'Again', color: '#4cc9f0', onTap: onAgain,
-    }));
-    this.nextBtn = this.buttons.add(new Button({
-      x: bx + (bw + gap) * 2, y: by, w: bw, h: bh, emoji: '➡️', label: 'Next', color: '#3ddc97', onTap: onNext,
-    }));
+    this.homeBtn = mk(0, '🏠', 'Home', '#8a8fb5', onHome);
+    this.againBtn = mk(1, '🔁', 'Again', '#4cc9f0', onAgain);
+    this.nextBtn = mk(2, '➡️', 'Next', '#3ddc97', onNext);
   }
 
   show({ stars = 3, title = 'Great job!', sticker = null, hasNext = true } = {}) {
@@ -265,34 +272,36 @@ export class ResultsPanel {
 
   draw(ctx) {
     if (!this.visible) return;
-    const { W, H } = this;
+    const { W, H, panel } = this;
     const k = clamp(this.pop.value, 0, 1.2);
+    const pivotY = panel.y + panel.h / 2;
     ctx.save();
     ctx.fillStyle = `rgba(30,22,48,${0.5 * clamp(k, 0, 1)})`;
     ctx.fillRect(0, 0, W, H);
 
-    ctx.translate(W / 2, H * 0.46);
+    ctx.translate(W / 2, pivotY);
     ctx.scale(k, k);
-    ctx.translate(-W / 2, -H * 0.46);
+    ctx.translate(-W / 2, -pivotY);
 
-    const pw = Math.min(880, W * 0.8), ph = H * 0.62;
-    glassPanel(ctx, W / 2 - pw / 2, H * 0.46 - ph / 2, pw, ph, 46, { alpha: 0.96 });
+    glassPanel(ctx, panel.x, panel.y, panel.w, panel.h, 46, { alpha: 0.96 });
 
-    bubbleText(ctx, this.title, W / 2, H * 0.30, 66, { fill: '#ffd76a', stroke: Palette.ink });
+    const titleSize = fitFontSize(ctx, this.title, panel.w * 0.82, 66);
+    bubbleText(ctx, this.title, W / 2, this.titleY, titleSize, { fill: '#ffd76a', stroke: Palette.ink });
 
-    const sr = 62, sgap = 168;
+    const sgap = this.starR * 2.7;
     for (let i = 0; i < 3; i++) {
       const sx = W / 2 + (i - 1) * sgap;
-      const sy = H * 0.45;
       const earned = i < this.shownStars;
+      // Each star lands with a little overshoot as it is awarded.
       const age = clamp((this.t - 0.5 - i * 0.42) / 0.42, 0, 1);
-      const bump = earned ? 1 + Ease.outBack(age) * 0.0 + Math.max(0, 1 - age) * 0.5 : 1;
-      goldStar(ctx, sx, sy, sr * bump, { filled: earned, glow: earned ? 1 : 0, rot: earned ? (1 - age) * 1.2 : 0 });
+      const bump = earned ? 1 + Math.max(0, 1 - age) * 0.5 : 1;
+      goldStar(ctx, sx, this.starsY, this.starR * bump,
+        { filled: earned, glow: earned ? 1 : 0, rot: earned ? (1 - age) * 1.2 : 0 });
     }
 
     if (this.sticker) {
-      softText(ctx, 'New sticker!', W / 2, H * 0.575, 30, { color: Palette.inkSoft });
-      drawEmoji(ctx, this.sticker, W / 2, H * 0.635, 72, { shadow: true });
+      softText(ctx, 'New sticker!', W / 2, this.stickerY - 34, 28, { color: Palette.inkSoft });
+      drawEmoji(ctx, this.sticker, W / 2, this.stickerY + 22, 68, { shadow: true });
     }
 
     this.buttons.draw(ctx);

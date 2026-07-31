@@ -78,7 +78,7 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: calc(var(--safe-t) + 16px) calc(var(--safe-r) + 26px) 8px calc(var(--safe-l) + 26px);
+  padding: calc(var(--safe-t) + 12px) calc(var(--safe-r) + 26px) 6px calc(var(--safe-l) + 26px);
   flex-wrap: wrap;
 }
 
@@ -129,14 +129,14 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   padding: 10px calc(var(--safe-r) + 26px) 20px calc(var(--safe-l) + 26px);
 }
 
-.shelf { margin-bottom: 26px; }
+.shelf { margin-bottom: 18px; }
 
 .shelf-head {
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  margin: 0 0 14px;
-  padding: 9px 24px 9px 16px;
+  margin: 0 0 11px;
+  padding: 7px 22px 7px 14px;
   border-radius: 999px;
   color: #fff;
   font-size: 24px;
@@ -148,8 +148,8 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(238px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(228px, 1fr));
+  gap: 16px;
 }
 
 .card {
@@ -157,8 +157,8 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  min-height: 208px;
-  padding: 20px;
+  min-height: 176px;
+  padding: 18px;
   border-radius: var(--card-radius);
   color: #fff;
   text-align: left;
@@ -179,19 +179,28 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   z-index: -1;
 }
 
+/* The emoji sits in the card's top-right corner; the text reserves room for it
+   with padding-right so a long title never runs underneath. */
 .card-emoji {
   position: absolute;
-  right: 10px;
-  top: 2px;
-  font-size: 92px;
+  right: 8px;
+  top: 4px;
+  font-size: 74px;
   line-height: 1;
   filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.28));
   transform: rotate(-8deg);
   pointer-events: none;
 }
 
-.card h3 { margin: 0; font-size: 27px; font-weight: 900; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.28); }
-.card p  { margin: 5px 0 0; font-size: 15.5px; font-weight: 700; opacity: 0.94; line-height: 1.28; }
+.card h3 {
+  margin: 0;
+  padding-right: 58px;
+  font-size: 25px;
+  font-weight: 900;
+  line-height: 1.1;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+}
+.card p { margin: 5px 0 0; font-size: 15px; font-weight: 700; opacity: 0.94; line-height: 1.26; }
 
 .card-stars { display: flex; gap: 5px; margin-top: 12px; font-size: 20px; }
 .card-stars .s { opacity: 0.32; filter: grayscale(1); }

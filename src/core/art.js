@@ -430,21 +430,22 @@ export function drawPip(ctx, x, y, size, { t = 0, mood = 'happy', look = 0 } = {
 
   const fur = '#ff9a52', furDark = '#f07a35', belly = '#fff3e2';
 
-  // tail
+  // Tail — anchored at the hip and swishing, drawn before the body so it tucks
+  // behind. The tip is cream, like a real fox.
   ctx.save();
-  ctx.translate(-48, 22);
-  ctx.rotate(Math.sin(t * 3) * 0.16 - 0.35);
+  ctx.translate(-40, 116);
+  ctx.rotate(Math.sin(t * 2.4) * 0.14 - 0.18);
   ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.quadraticCurveTo(-58, 6, -66, -52);
-  ctx.quadraticCurveTo(-30, -30, 0, -26);
+  ctx.moveTo(4, 16);
+  ctx.quadraticCurveTo(-64, 26, -74, -34);
+  ctx.quadraticCurveTo(-38, -18, 2, -22);
   ctx.closePath();
   ctx.fillStyle = furDark;
   ctx.fill();
   ctx.beginPath();
-  ctx.moveTo(-52, -22);
-  ctx.quadraticCurveTo(-70, -34, -66, -52);
-  ctx.quadraticCurveTo(-48, -44, -40, -30);
+  ctx.moveTo(-58, 4);
+  ctx.quadraticCurveTo(-80, -6, -74, -34);
+  ctx.quadraticCurveTo(-54, -26, -46, -8);
   ctx.closePath();
   ctx.fillStyle = belly;
   ctx.fill();
@@ -479,18 +480,19 @@ export function drawPip(ctx, x, y, size, { t = 0, mood = 'happy', look = 0 } = {
   ctx.fillStyle = fur;
   ctx.fill();
 
-  // ears
+  // ears — tall triangles with a soft inner shell
   [-1, 1].forEach((side) => {
     ctx.beginPath();
-    ctx.moveTo(side * 30, -44);
-    ctx.quadraticCurveTo(side * 62, -96, side * 66, -40);
-    ctx.quadraticCurveTo(side * 50, -30, side * 30, -44);
+    ctx.moveTo(side * 24, -46);
+    ctx.quadraticCurveTo(side * 44, -108, side * 62, -50);
+    ctx.quadraticCurveTo(side * 44, -34, side * 24, -46);
     ctx.closePath();
     ctx.fillStyle = furDark;
     ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(side * 38, -46);
-    ctx.quadraticCurveTo(side * 55, -78, side * 57, -45);
+    ctx.moveTo(side * 33, -50);
+    ctx.quadraticCurveTo(side * 44, -88, side * 53, -50);
+    ctx.quadraticCurveTo(side * 43, -42, side * 33, -50);
     ctx.closePath();
     ctx.fillStyle = '#ffd0b0';
     ctx.fill();

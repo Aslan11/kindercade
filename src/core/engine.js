@@ -20,11 +20,8 @@ import { FX } from './fx.js';
 import { Tweens } from './anim.js';
 import { audio } from './audio.js';
 import { progress } from './progress.js';
-import { ButtonLayer, Button, ResultsPanel, starChip, pill, MIN_TOUCH } from './ui.js';
-import {
-  drawBackdrop, bubbleText, softText, roundRect, glassPanel, drawEmoji,
-  progressPips, Palette, font, fitFontSize, Subjects,
-} from './art.js';
+import { ButtonLayer, Button, ResultsPanel, starChip, pill } from './ui.js';
+import { drawBackdrop, glassPanel, progressPips, Palette, font, fitFontSize, Subjects } from './art.js';
 import { clamp } from './util.js';
 
 export const DESIGN_H = 900;

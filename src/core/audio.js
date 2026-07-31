@@ -25,7 +25,9 @@ class AudioKit {
     this.unlocked = false;
     this._voice = null;
     this._voicesReady = false;
-    this._speakQueue = [];
+    // Bumped by stopSpeech(); queued/delayed utterances check it so speech
+    // scheduled by a game cannot fire after the child has left that game.
+    this._speechEpoch = 0;
   }
 
   /* ---------------------------------------------------------------- lifecycle */
@@ -224,7 +226,9 @@ class AudioKit {
    */
   speak(text, { rate = 0.85, pitch = 1.15, interrupt = true, delay = 0 } = {}) {
     if (!this.voiceOn || this.muted || !text || !('speechSynthesis' in window)) return;
+    const epoch = this._speechEpoch;
     const fire = () => {
+      if (epoch !== this._speechEpoch) return;
       try {
         if (interrupt) speechSynthesis.cancel();
         const u = new SpeechSynthesisUtterance(String(text));
@@ -244,17 +248,22 @@ class AudioKit {
   /** Say a word letter-by-letter, then the whole word. */
   spellOut(word, { onLetter = null, letterGap = 0.55 } = {}) {
     if (!this.voiceOn || this.muted) return;
+    const epoch = this._speechEpoch;
     const letters = String(word).split('');
     letters.forEach((ch, i) => {
       setTimeout(() => {
+        if (epoch !== this._speechEpoch) return;
         this.speak(ch.toUpperCase(), { interrupt: false, rate: 0.8 });
         onLetter?.(i, ch);
       }, i * letterGap * 1000);
     });
-    setTimeout(() => this.speak(word, { interrupt: false, rate: 0.75 }), (letters.length + 0.4) * letterGap * 1000);
+    setTimeout(() => {
+      if (epoch === this._speechEpoch) this.speak(word, { interrupt: false, rate: 0.75 });
+    }, (letters.length + 0.4) * letterGap * 1000);
   }
 
   stopSpeech() {
+    this._speechEpoch++;
     try { if ('speechSynthesis' in window) speechSynthesis.cancel(); } catch (_) { /* noop */ }
   }
 }
