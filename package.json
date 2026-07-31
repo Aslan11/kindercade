@@ -1,0 +1,16 @@
+{
+  "name": "kindercade",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A little arcade of beautiful learning games for young children — counting, adding, spelling and puzzles. Static site, no build step.",
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "check": "node tools/check.mjs",
+    "icons": "node tools/make-icons.mjs",
+    "smoke": "node tools/smoke.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
