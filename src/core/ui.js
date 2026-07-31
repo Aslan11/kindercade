@@ -12,6 +12,7 @@ import {
   candyRect, candyCircle, bubbleText, softText, roundRect, glassPanel,
   drawEmoji, goldStar, font, Palette, fitFontSize, starPath,
 } from './art.js';
+import { hasSprite } from './sprites.js';
 
 export const MIN_TOUCH = 96;
 
@@ -242,9 +243,9 @@ export class ResultsPanel {
     const mk = (i, emoji, label, color, onTap) => this.buttons.add(new Button({
       x: bx + i * (bw + gap), y: by, w: bw, h: bh, emoji, label, color, onTap,
     }));
-    this.homeBtn = mk(0, '🏠', 'Home', '#8a8fb5', onHome);
-    this.againBtn = mk(1, '🔁', 'Again', '#4cc9f0', onAgain);
-    this.nextBtn = mk(2, '➡️', 'Next', '#3ddc97', onNext);
+    this.homeBtn = mk(0, 'icon-home', 'Home', '#8a8fb5', onHome);
+    this.againBtn = mk(1, 'icon-again', 'Again', '#4cc9f0', onAgain);
+    this.nextBtn = mk(2, 'icon-next', 'Next', '#3ddc97', onNext);
   }
 
   show({ stars = 3, title = 'Great job!', sticker = null, hasNext = true } = {}) {
@@ -362,12 +363,16 @@ export function starChip(ctx, x, y, count) {
   roundRect(ctx, x - w, y - 27, w, 54, 27);
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
   ctx.fill();
-  starPath(ctx, x - w + 27, y, 17, 8, 5);
-  ctx.fillStyle = '#ffc93c';
-  ctx.fill();
-  ctx.lineWidth = 2.5;
-  ctx.strokeStyle = '#e2820f';
-  ctx.stroke();
+  if (hasSprite('icon-star')) {
+    drawEmoji(ctx, 'icon-star', x - w + 27, y, 36);
+  } else {
+    starPath(ctx, x - w + 27, y, 17, 8, 5);
+    ctx.fillStyle = '#ffc93c';
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = '#e2820f';
+    ctx.stroke();
+  }
   ctx.fillStyle = Palette.ink;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';

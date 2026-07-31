@@ -9,12 +9,35 @@
 
 import { Game } from '../core/engine.js';
 import { candyRect, drawEmoji, bubbleText, roundRect, starPath } from '../core/art.js';
+import { getSprite } from '../core/sprites.js';
 import { Ease } from '../core/anim.js';
 import { shuffle, pick, clamp, sample, pointInRect, shade } from '../core/util.js';
 import { COUNTABLES, numberWord, PRAISE } from '../data/words.js';
 
 const LEVEL_PAIRS = { 1: 4, 2: 6, 3: 8 };
 const GRID = { 4: [4, 2], 6: [4, 3], 8: [4, 4] };
+
+/**
+ * The card backs are papered with `card-back-tile`, a seamlessly tileable 32×32
+ * star motif. A canvas pattern needs the tile on its own, so the cell is copied
+ * out of the sheet once and kept for the life of the page.
+ */
+let backTile = null;
+
+function backTilePattern(ctx) {
+  if (!backTile) {
+    const s = getSprite('card-back-tile');
+    if (!s) return null;    // sheets not loaded (or missing) — caller falls back
+    const c = document.createElement('canvas');
+    c.width = s.w;
+    c.height = s.h;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.drawImage(s.img, s.x, s.y, s.w, s.h, 0, 0, s.w, s.h);
+    backTile = c;
+  }
+  return ctx.createPattern(backTile, 'repeat');
+}
 
 export default class MemoryMatch extends Game {
   static meta = {
@@ -203,13 +226,24 @@ export default class MemoryMatch extends Game {
     ctx.clip();
     // A little repeating star field on the card backs.
     const step = card.w * 0.3;
-    ctx.globalAlpha = 0.22;
-    for (let y = card.y; y < card.y + card.h + step; y += step) {
-      for (let x = card.x; x < card.x + card.w + step; x += step) {
-        const off = (Math.round((y - card.y) / step) % 2) * step * 0.5;
-        starPath(ctx, x + off, y, step * 0.19, step * 0.085, 5);
-        ctx.fillStyle = '#ffffff';
-        ctx.fill();
+    const pattern = backTilePattern(ctx);
+    if (pattern) {
+      // Fill in a scaled space so one 32px tile lands on `step` on screen.
+      const k = step / backTile.width;
+      ctx.globalAlpha = 0.3;
+      ctx.imageSmoothingEnabled = false;
+      ctx.scale(k, k);
+      ctx.fillStyle = pattern;
+      ctx.fillRect(card.x / k, card.y / k, card.w / k, card.h / k);
+    } else {
+      ctx.globalAlpha = 0.22;
+      for (let y = card.y; y < card.y + card.h + step; y += step) {
+        for (let x = card.x; x < card.x + card.w + step; x += step) {
+          const off = (Math.round((y - card.y) / step) % 2) * step * 0.5;
+          starPath(ctx, x + off, y, step * 0.19, step * 0.085, 5);
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+        }
       }
     }
     ctx.restore();

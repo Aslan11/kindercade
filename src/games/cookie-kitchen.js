@@ -12,6 +12,7 @@ import { Game } from '../core/engine.js';
 import { Button } from '../core/ui.js';
 import { DragController } from '../core/input.js';
 import { candyCircle, candyRect, roundRect, softText, radial } from '../core/art.js';
+import { drawSprite, hasSprite } from '../core/sprites.js';
 import { Ease } from '../core/anim.js';
 import { randInt, clamp, hashNoise, pick, TAU } from '../core/util.js';
 import { numberWord, PRAISE } from '../data/words.js';
@@ -165,7 +166,7 @@ export default class CookieKitchen extends Game {
     this.buttons.clear();
     this.bakeBtn = this.buttons.add(new Button({
       x: this.W - 250, y: this.tray.y + this.tray.h / 2 - 56,
-      w: 210, h: 112, r: 30, emoji: '🔥', label: 'Bake!', color: '#ff7a3d',
+      w: 210, h: 112, r: 30, emoji: 'icon-flame', label: 'Bake!', color: '#ff7a3d',
       enabled: false,
       onTap: () => this.bake(),
     }));
@@ -381,6 +382,14 @@ export default class CookieKitchen extends Game {
       ctx.shadowColor = 'rgba(60,40,25,0.35)';
       ctx.shadowBlur = 22;
       ctx.shadowOffsetY = 10;
+    }
+    if (hasSprite('cookie-1')) {
+      // One of three chip layouts, chosen by id so a cookie keeps its face as it
+      // moves; pre-baked ones take the darker "already on the tray" variant. The
+      // sprite cell carries a little padding, so it draws a touch over 2r.
+      drawSprite(ctx, c.locked ? 'cookie-dark' : `cookie-${1 + (c.id % 3)}`, 0, 0, this.cell * 0.88);
+      ctx.restore();
+      return;
     }
     candyCircle(ctx, 0, 0, r, c.locked ? '#c9853f' : DOUGH, { gloss: false });
     ctx.shadowBlur = 0;

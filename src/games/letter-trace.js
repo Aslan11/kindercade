@@ -104,7 +104,7 @@ export default class LetterTrace extends Game {
 
     this.buttons.clear();
     this.buttons.add(new Button({
-      x: this.W - 96, y: this.H - 96, circle: true, radius: 52, emoji: '↺', color: '#ff8fa8',
+      x: this.W - 96, y: this.H - 96, circle: true, radius: 52, emoji: 'icon-undo', color: '#ff8fa8',
       onTap: () => this.clearPaint(true),
     }));
   }

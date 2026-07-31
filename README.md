@@ -49,12 +49,14 @@ alone.
 sliding off the edge, and Safari's scroll, zoom and text-selection gestures are
 all suppressed inside a game.
 
-**Built to last.** No frameworks, no bundler, no npm dependencies, no external
-assets. Plain ES modules and Canvas 2D served straight from the repo. All art is
-generated at runtime — vector shapes with real gradients and shading, plus colour
-emoji baked into cached sprites — so it stays perfectly sharp on a Retina display
-and the whole app is a few hundred kilobytes. All sound is synthesised with the
-Web Audio API; speech uses the system voice.
+**Built to last.** No frameworks, no bundler, no npm dependencies. Plain ES
+modules and Canvas 2D served straight from the repo. Structural art (buttons,
+panels, skies) is generated at runtime — vector shapes with real gradients and
+shading — while every creature, object and icon comes from a hand-made 16-bit
+pixel-art sprite atlas in `assets/sprites/` (five sheets plus eight jigsaw scene
+paintings), blitted with nearest-neighbour scaling so the pixels stay chunky and
+crisp on a Retina display. All sound is synthesised with the Web Audio API;
+speech uses the system voice.
 
 **Built to be listened to.** Every spoken line goes through one queue, so
 phrases follow each other instead of cutting each other off, and the voice is

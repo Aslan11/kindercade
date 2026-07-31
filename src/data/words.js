@@ -78,7 +78,7 @@ export const WORDS = [
   { word: 'shoe', emoji: '👟', tier: 2 },
   { word: 'hand', emoji: '✋', tier: 2 },
   { word: 'nest', emoji: '🪺', tier: 2 },
-  { word: 'moth', emoji: '🦋', tier: 2 },
+  { word: 'moth', emoji: 'moth', tier: 2 },   // sprite name: 🦋 belongs to 'butterfly'
 
   // ---- tier 3: five letters ---------------------------------------------
   { word: 'apple', emoji: '🍎', tier: 3 },

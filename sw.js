@@ -7,7 +7,7 @@
  * deploy is picked up on the next launch.
  */
 
-const VERSION = 'kindercade-v1';
+const VERSION = 'kindercade-v2';
 const CORE = [
   './',
   'index.html',
@@ -16,6 +16,7 @@ const CORE = [
   'src/app.js',
   'src/core/engine.js',
   'src/core/art.js',
+  'src/core/sprites.js',
   'src/core/audio.js',
   'src/core/input.js',
   'src/core/fx.js',
@@ -36,6 +37,20 @@ const CORE = [
   'src/games/jigsaw-garden.js',
   'assets/icon-192.png',
   'assets/icon-512.png',
+  // The 16-bit sprite atlas — without these there is no art on a plane.
+  'assets/sprites/pip.png',
+  'assets/sprites/icons.png',
+  'assets/sprites/pictures.png',
+  'assets/sprites/shapes.png',
+  'assets/sprites/game-bits.png',
+  'assets/sprites/scene-fox.png',
+  'assets/sprites/scene-turtle.png',
+  'assets/sprites/scene-train.png',
+  'assets/sprites/scene-whale.png',
+  'assets/sprites/scene-butterfly.png',
+  'assets/sprites/scene-castle.png',
+  'assets/sprites/scene-rocket.png',
+  'assets/sprites/scene-bee.png',
 ];
 
 self.addEventListener('install', (event) => {

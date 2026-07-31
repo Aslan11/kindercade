@@ -1,10 +1,11 @@
 /**
  * Jigsaw Garden — spatial reasoning, part-whole thinking and persistence.
  *
- * The picture is generated at runtime (there are no image files anywhere in this
- * project) and cut with real interlocking tabs: every interior edge is a bezier
- * with a knob on one side and the matching socket on the other, seeded so both
- * pieces always agree.
+ * The picture is a finished 16-bit scene painting from the sprite atlas, drawn
+ * cover-fit into an offscreen canvas and cut with real interlocking tabs: every
+ * interior edge is a bezier with a knob on one side and the matching socket on
+ * the other, seeded so both pieces always agree. Until the painting decodes,
+ * the old runtime composite stands in as a placeholder.
  *
  * A faint ghost of the finished picture stays visible inside the frame. That is
  * deliberate — for a five-year-old the challenge should be *placing* the piece,
@@ -14,12 +15,15 @@
 import { Game } from '../core/engine.js';
 import { drawBackdrop, drawEmoji, starPath, blobPath, softText, glassPanel, roundRect } from '../core/art.js';
 import { DragController } from '../core/input.js';
+import { loadScene } from '../core/sprites.js';
 import { Ease } from '../core/anim.js';
 import { shuffle, pick, clamp, randInt, makeRng, dist, lerp } from '../core/util.js';
 import { PRAISE } from '../data/words.js';
 
 const GRIDS = { 1: [2, 2], 2: [3, 2], 3: [3, 3] };
 
+// `name` doubles as the scene painting's atlas name; the sky/hills/props are
+// only used for the placeholder composite drawn before the painting decodes.
 const SCENES = [
   { hero: '🦊', name: 'fox', sky: ['#cfefff', '#ffe7c4'], hills: ['#9ae7ac', '#68d18e'], props: ['🌷', '🍄', '🦋'] },
   { hero: '🐢', name: 'turtle', sky: ['#c9f2ff', '#d9fff0'], hills: ['#8fe3d0', '#5fc9b6'], props: ['🌿', '🐚', '💧'] },
@@ -54,6 +58,16 @@ export default class JigsawGarden extends Game {
     this.seed = randInt(1, 1e6);
     this.pieces = [];
     this.backdrop = { top: '#e4fff0', bottom: '#fff6dd', hills: ['#9ee8bd', '#6fd39c'] };
+
+    // The painting arrives asynchronously; re-render the offscreen picture when
+    // it lands. The pieces and the ghost both blit from that one canvas, so
+    // nothing else needs invalidating.
+    this.sceneImage = null;
+    loadScene(this.scene.name).then((img) => {
+      if (!img || !this.pieces) return;   // destroyed while decoding
+      this.sceneImage = img;
+      if (this.frame) this.renderPicture();
+    });
 
     this.drag = new DragController({
       items: () => this.pieces,
@@ -114,6 +128,19 @@ export default class JigsawGarden extends Game {
     const s = this.scene;
     const rng = makeRng(this.seed);
 
+    // The finished painting, cover-fit: fill the frame, keep the aspect ratio,
+    // crop the overflow evenly and leave the pixels chunky.
+    const img = this.sceneImage;
+    if (img) {
+      const k = Math.max(w / img.width, h / img.height);
+      const dw = img.width * k;
+      const dh = img.height * k;
+      c.imageSmoothingEnabled = false;
+      c.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+      return;
+    }
+
+    // Placeholder until the painting decodes: the old runtime composite.
     drawBackdrop(c, w, h, 2.5, {
       top: s.sky[0], bottom: s.sky[1], hills: s.hills, sun: true, clouds: 2,
       sunX: 0.2 + rng() * 0.6, sunY: 0.14 + rng() * 0.1,
@@ -396,6 +423,8 @@ export default class JigsawGarden extends Game {
 
     ctx.save();
     ctx.clip(p.path);
+    // Pieces are scaled down in the tray and up in hand — keep the pixels hard.
+    ctx.imageSmoothingEnabled = false;
     ctx.drawImage(this.picture, -p.c * this.pw, -p.r * this.ph, this.frame.w, this.frame.h);
     ctx.restore();
 
@@ -410,6 +439,7 @@ export default class JigsawGarden extends Game {
 
   destroy() {
     this.picture = null;
+    this.sceneImage = null;
     this.pieces = null;
   }
 }

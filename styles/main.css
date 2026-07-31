@@ -203,8 +203,10 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 .card p { margin: 5px 0 0; font-size: 15px; font-weight: 700; opacity: 0.94; line-height: 1.26; }
 
 .card-stars { display: flex; gap: 5px; margin-top: 12px; font-size: 20px; }
-.card-stars .s { opacity: 0.32; filter: grayscale(1); }
-.card-stars .s.on { opacity: 1; filter: none; text-shadow: 0 0 12px rgba(255, 220, 120, 0.9); }
+.card-stars .s { opacity: 0.55; filter: grayscale(1); }
+.card-stars .s.on { opacity: 1; filter: drop-shadow(0 0 8px rgba(255, 220, 120, 0.9)); text-shadow: 0 0 12px rgba(255, 220, 120, 0.9); }
+/* Pixel-art sprites shown in the DOM shell (chips, cards, stickers). */
+.spr { display: inline-block; vertical-align: middle; image-rendering: pixelated; }
 
 .home-footer {
   position: relative;

@@ -144,7 +144,7 @@ export default class WordBuilder extends Game {
 
     this.buttons.clear();
     this.hintBtn = this.buttons.add(new Button({
-      x: this.W - 96, y: this.H - 96, circle: true, radius: 52, emoji: '💡', color: '#ffc93c',
+      x: this.W - 96, y: this.H - 96, circle: true, radius: 52, emoji: 'icon-hint', color: '#ffc93c',
       onTap: () => this.hint(),
     }));
   }
