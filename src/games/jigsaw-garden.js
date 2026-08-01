@@ -3,9 +3,11 @@
  *
  * The picture is a finished 16-bit scene painting from the sprite atlas, drawn
  * cover-fit into an offscreen canvas and cut with real interlocking tabs: every
- * interior edge is a bezier with a knob on one side and the matching socket on
- * the other, seeded so both pieces always agree. Until the painting decodes,
- * the old runtime composite stands in as a placeholder.
+ * interior edge carries a knob on one side and the matching socket on the
+ * other, seeded so both pieces always agree. The knob curves are pure math —
+ * they are sampled, snapped to the texel grid and emitted as axis-stepped
+ * staircase outlines, so the cut itself reads as pixel art. Until the painting
+ * decodes, the old runtime composite stands in as a placeholder.
  *
  * A faint ghost of the finished picture stays visible inside the frame. That is
  * deliberate — for a five-year-old the challenge should be *placing* the piece,
@@ -13,7 +15,7 @@
  */
 
 import { Game } from '../core/engine.js';
-import { drawBackdrop, drawEmoji, starPath, blobPath, softText, glassPanel, roundRect } from '../core/art.js';
+import { drawBackdrop, drawEmoji, softText, glassPanel, roundRect, PX, px, stepAlpha, HARD_SHADOW } from '../core/art.js';
 import { DragController } from '../core/input.js';
 import { loadScene } from '../core/sprites.js';
 import { Ease } from '../core/anim.js';
@@ -98,14 +100,16 @@ export default class JigsawGarden extends Game {
     this.trayH = clamp(this.H * 0.22, 150, 210);
     const availH = this.H - this.playTop - this.trayH - 54;
     const availW = this.W * 0.66;
-    const cell = Math.floor(Math.min(availW / this.cols, availH / this.rows));
+    // Cell and frame origin snap to the texel grid so every cut edge, seam
+    // line and staircase knob of adjacent pieces lands on the same texels.
+    const cell = Math.floor(Math.min(availW / this.cols, availH / this.rows) / PX) * PX;
     this.pw = cell;
     this.ph = cell;
     const fw = cell * this.cols;
     const fh = cell * this.rows;
     this.frame = {
-      x: Math.round(this.cx - fw / 2),
-      y: Math.round(this.playTop + (availH - fh) / 2),
+      x: px(this.cx - fw / 2),
+      y: px(this.playTop + (availH - fh) / 2),
       w: fw, h: fh,
     };
     this.trayTop = this.H - this.trayH;
@@ -152,24 +156,33 @@ export default class JigsawGarden extends Game {
       const py = h * (0.45 + rng() * 0.48);
       drawEmoji(c, s.props[i % s.props.length], px, py, Math.min(w, h) * (0.08 + rng() * 0.06));
     }
-    // A few soft blobs for depth.
+    // A few dappled clusters of texel squares for depth.
     for (let i = 0; i < 4; i++) {
+      const bx = w * rng();
+      const by = h * (0.5 + rng() * 0.5);
+      const br = Math.min(w, h) * (0.08 + rng() * 0.1);
       c.save();
-      c.globalAlpha = 0.18;
-      blobPath(c, w * rng(), h * (0.5 + rng() * 0.5), Math.min(w, h) * (0.08 + rng() * 0.1),
-        { points: 7, wobble: 0.2, seed: this.seed + i });
+      c.globalAlpha = stepAlpha(0.18);
       c.fillStyle = '#ffffff';
-      c.fill();
+      for (let j = 0; j < 14; j++) {
+        const a = rng() * Math.PI * 2;
+        const d = Math.sqrt(rng()) * br;
+        c.fillRect(px(bx + Math.cos(a) * d), px(by + Math.sin(a) * d), PX * 2, PX * 2);
+      }
       c.restore();
     }
     // Hero, big and centred.
     drawEmoji(c, s.hero, w * 0.5, h * 0.5, Math.min(w, h) * 0.56, { shadow: true });
+    // Pixel plus-shape twinkles in the sky.
     for (let i = 0; i < 5; i++) {
+      const sx = px(w * rng());
+      const sy = px(h * rng() * 0.55);
+      const arm = Math.max(PX, px(Math.min(w, h) * 0.03));
       c.save();
-      c.globalAlpha = 0.5;
-      starPath(c, w * rng(), h * rng() * 0.55, Math.min(w, h) * 0.03, Math.min(w, h) * 0.013, 5);
+      c.globalAlpha = stepAlpha(0.5);
       c.fillStyle = '#ffffff';
-      c.fill();
+      c.fillRect(sx - arm, sy, arm * 2 + PX, PX);
+      c.fillRect(sx, sy - arm, PX, arm * 2 + PX);
       c.restore();
     }
   }
@@ -193,19 +206,43 @@ export default class JigsawGarden extends Game {
 
   /**
    * A single piece outline in local coordinates, with a tab (or socket, or a
-   * straight border edge) on each side.
+   * straight border edge) on each side. The knob beziers are used only as MATH:
+   * each curve is sampled, the samples snap to the texel grid, and the outline
+   * is emitted as an axis-stepped staircase. Both pieces sharing an edge sample
+   * the identical physical curve (one is the exact reverse of the other), and
+   * the step corner is picked independent of travel direction, so the two
+   * staircases complement each other texel for texel.
    */
   piecePath(r, c) {
     const w = this.pw;
     const h = this.ph;
     const tab = Math.min(w, h) * 0.2;    // how far the knob sticks out
     const neck = 0.36;                   // where along the edge the knob sits
-    const p = new Path2D();
+    const steps = clamp(Math.round(tab), 10, 40);   // samples per knob curve
+
+    // Grid-snapped sample list, skipping consecutive duplicates.
+    const pts = [];
+    const add = (x, y) => {
+      const qx = px(x);
+      const qy = px(y);
+      const last = pts[pts.length - 1];
+      if (last && last[0] === qx && last[1] === qy) return;
+      pts.push([qx, qy]);
+    };
+    // Cubic bezier point — sampling math only, never painted directly.
+    const cubic = (p0, c1, c2, p1, t) => {
+      const u = 1 - t;
+      const a = u * u * u, b = 3 * u * u * t, d = 3 * u * t * t, e = t * t * t;
+      return [
+        a * p0[0] + b * c1[0] + d * c2[0] + e * p1[0],
+        a * p0[1] + b * c1[1] + d * c2[1] + e * p1[1],
+      ];
+    };
 
     // Each edge is traced left-to-right / top-to-bottom in local space; `sign`
     // of +1 pushes the knob outward, -1 carves it inward.
     const edge = (x0, y0, x1, y1, sign) => {
-      if (!sign) { p.lineTo(x1, y1); return; }
+      if (!sign) { add(x1, y1); return; }
       const dx = x1 - x0;
       const dy = y1 - y0;
       // Perpendicular, pointing "out" of the piece.
@@ -216,28 +253,50 @@ export default class JigsawGarden extends Game {
       const uy = (ny / len) * tab * sign;
       const at = (t) => [x0 + dx * t, y0 + dy * t];
 
-      const [ax, ay] = at(neck);
-      const [bx, by] = at(1 - neck);
+      const a = at(neck);
+      const b = at(1 - neck);
       const [mx, my] = at(0.5);
-      p.lineTo(ax, ay);
-      p.bezierCurveTo(
-        ax + ux * 0.1, ay + uy * 0.1,
-        mx - dx * 0.16 + ux * 1.25, my - dy * 0.16 + uy * 1.25,
-        mx + ux, my + uy,
-      );
-      p.bezierCurveTo(
-        mx + dx * 0.16 + ux * 1.25, my + dy * 0.16 + uy * 1.25,
-        bx + ux * 0.1, by + uy * 0.1,
-        bx, by,
-      );
-      p.lineTo(x1, y1);
+      const m = [mx + ux, my + uy];
+      add(a[0], a[1]);
+      for (let i = 1; i <= steps; i++) {
+        const [sx, sy] = cubic(
+          a, [a[0] + ux * 0.1, a[1] + uy * 0.1],
+          [mx - dx * 0.16 + ux * 1.25, my - dy * 0.16 + uy * 1.25], m, i / steps,
+        );
+        add(sx, sy);
+      }
+      for (let i = 1; i <= steps; i++) {
+        const [sx, sy] = cubic(
+          m, [mx + dx * 0.16 + ux * 1.25, my + dy * 0.16 + uy * 1.25],
+          [b[0] + ux * 0.1, b[1] + uy * 0.1], b, i / steps,
+        );
+        add(sx, sy);
+      }
+      add(x1, y1);
     };
 
-    p.moveTo(0, 0);
+    add(0, 0);
     edge(0, 0, w, 0, -this.hSign(r - 1, c));    // top: complement of the piece above
     edge(w, 0, w, h, this.vSign(r, c));         // right
     edge(w, h, 0, h, this.hSign(r, c));         // bottom
     edge(0, h, 0, 0, -this.vSign(r, c - 1));    // left: complement of the piece to the left
+    const first = pts[0];
+    const last = pts[pts.length - 1];
+    if (last[0] === first[0] && last[1] === first[1]) pts.pop();
+
+    // Emit the staircase: samples that differ on both axes route through a
+    // corner at (x of the lower point, y of the upper point) — the same
+    // physical corner no matter which piece walks the edge.
+    const p = new Path2D();
+    p.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i <= pts.length; i++) {
+      const [x0p, y0p] = pts[i - 1];
+      const [x1p, y1p] = pts[i % pts.length];
+      if (x0p !== x1p && y0p !== y1p) {
+        p.lineTo(y0p > y1p ? x0p : x1p, Math.min(y0p, y1p));
+      }
+      p.lineTo(x1p, y1p);
+    }
     p.closePath();
     return p;
   }
@@ -355,39 +414,42 @@ export default class JigsawGarden extends Game {
     // Frame + ghost of the finished picture, so the child can see where things go.
     glassPanel(ctx, f.x - 14, f.y - 14, f.w + 28, f.h + 28, 28, { alpha: 0.5 });
     ctx.save();
-    roundRect(ctx, f.x, f.y, f.w, f.h, 10);
+    ctx.beginPath();
+    ctx.rect(f.x, f.y, f.w, f.h);
     ctx.clip();
-    ctx.globalAlpha = 0.32;
+    ctx.globalAlpha = stepAlpha(0.32);
     ctx.drawImage(this.picture, f.x, f.y, f.w, f.h);
     ctx.restore();
 
-    // Grid guide, fading out as the puzzle completes.
+    // Grid guide as texel-wide seam lines, dissolving in stepped eighths.
     if (this.seamFade < 1) {
       ctx.save();
-      ctx.globalAlpha = 0.3 * (1 - this.seamFade);
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 3;
+      ctx.globalAlpha = stepAlpha(0.3 * (1 - this.seamFade));
+      ctx.fillStyle = '#ffffff';
       for (let c = 1; c < this.cols; c++) {
-        ctx.beginPath();
-        ctx.moveTo(f.x + c * this.pw, f.y);
-        ctx.lineTo(f.x + c * this.pw, f.y + f.h);
-        ctx.stroke();
+        ctx.fillRect(f.x + c * this.pw, f.y, PX, f.h);
       }
       for (let r = 1; r < this.rows; r++) {
-        ctx.beginPath();
-        ctx.moveTo(f.x, f.y + r * this.ph);
-        ctx.lineTo(f.x + f.w, f.y + r * this.ph);
-        ctx.stroke();
+        ctx.fillRect(f.x, f.y + r * this.ph, f.w, PX);
       }
       ctx.restore();
     }
 
-    // Tray shelf, as a band across the bottom of the screen.
+    // Tray shelf, as a chamfered pixel band across the bottom of the screen.
     if (this.placedCount < this.cols * this.rows) {
       ctx.save();
-      roundRect(ctx, this.W * 0.02, this.trayTop, this.W * 0.96, this.trayH + 40, 32);
+      const tx = px(this.W * 0.02);
+      const ty = px(this.trayTop);
+      const tw = px(this.W * 0.96);
+      roundRect(ctx, tx, ty, tw, px(this.trayH + 40), 8);
       ctx.fillStyle = 'rgba(255,255,255,0.42)';
       ctx.fill();
+      ctx.strokeStyle = 'rgba(44,35,64,0.2)';
+      ctx.lineWidth = PX;
+      ctx.stroke();
+      // A 1-texel light band along the inside top edge of the shelf.
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.fillRect(tx + PX * 2, ty + PX, tw - PX * 4, PX);
       ctx.restore();
       softText(ctx, 'Drag the pieces into the picture', this.cx, this.trayTop - 14, 24,
         { color: 'rgba(44,35,64,0.45)' });
@@ -399,11 +461,11 @@ export default class JigsawGarden extends Game {
   }
 
   /**
-   * Clip to the piece's outline, draw the slice of the picture that belongs
-   * there, then stroke the edge for a light bevel.
+   * Clip to the piece's staircase outline, draw the slice of the picture that
+   * belongs there, then stroke the edge as a hard 1-texel seam.
    */
   drawPiece(ctx, p) {
-    const wob = p.wobble > 0 ? Math.sin(this.t * 20) * 5 * p.wobble : 0;
+    const wob = p.wobble > 0 ? px(Math.sin(this.t * 20) * 5 * p.wobble) : 0;
     const scale = this.pieceScale(p);
     ctx.save();
     ctx.translate(p.x + wob, p.y);
@@ -411,14 +473,13 @@ export default class JigsawGarden extends Game {
     ctx.translate(-this.pw / 2, -this.ph / 2);
 
     if (p.lift > 0.1) {
-      ctx.shadowColor = 'rgba(20,40,30,0.4)';
-      ctx.shadowBlur = 26;
-      ctx.shadowOffsetY = 14;
-      // A shadow needs something opaque to cast from.
-      ctx.fillStyle = '#ffffff';
+      // Hard offset silhouette shadow: the piece's own outline, a couple of
+      // texels down, flat and blur-free.
+      ctx.save();
+      ctx.translate(0, PX * 2);
+      ctx.fillStyle = HARD_SHADOW;
       ctx.fill(p.path);
-      ctx.shadowBlur = 0;
-      ctx.shadowOffsetY = 0;
+      ctx.restore();
     }
 
     ctx.save();
@@ -429,9 +490,10 @@ export default class JigsawGarden extends Game {
     ctx.restore();
 
     if (!(p.locked && this.seamFade >= 1)) {
-      ctx.globalAlpha = p.locked ? 1 - this.seamFade : 1;
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      // Locked seams dissolve in stepped eighths once the puzzle completes.
+      ctx.globalAlpha = stepAlpha(0.875 * (p.locked ? 1 - this.seamFade : 1));
+      ctx.lineWidth = PX;
+      ctx.strokeStyle = '#ffffff';
       ctx.stroke(p.path);
     }
     ctx.restore();

@@ -11,7 +11,7 @@
 import { Game } from '../core/engine.js';
 import { Button, drawSlot } from '../core/ui.js';
 import { DragController } from '../core/input.js';
-import { candyRect, drawEmoji, bubbleText, softText, roundRect } from '../core/art.js';
+import { candyRect, drawEmoji, bubbleText, softText, roundRect, PX, px, stepAlpha, HARD_SHADOW } from '../core/art.js';
 import { Ease } from '../core/anim.js';
 import { shuffle, pick, clamp, dist, sampleAvoiding } from '../core/util.js';
 import { WORDS, tierForLevel, LETTER_SOUND, LETTER_NAME, ALPHABET, PRAISE, ENCOURAGE } from '../data/words.js';
@@ -255,24 +255,25 @@ export default class WordBuilder extends Game {
   }
 
   draw(ctx) {
-    // Picture card
+    // Picture card — the bob snaps to the texel grid so it steps, never shimmers.
     const p = this.picture;
-    const bob = Math.sin(this.t * 1.5) * 5 + (this.wave >= 0 ? Math.sin(this.wave * 2) * 8 : 0);
-    candyRect(ctx, p.cx - p.size * 0.62, p.cy - p.size * 0.56 + bob, p.size * 1.24, p.size * 1.08, 34,
+    const bob = px(Math.sin(this.t * 1.5) * 5 + (this.wave >= 0 ? Math.sin(this.wave * 2) * 8 : 0));
+    candyRect(ctx, p.cx - p.size * 0.62, p.cy - p.size * 0.56 + bob, p.size * 1.24, p.size * 1.08, PX * 2,
       '#ffffff', { depth: 10, gloss: false, stroke: this.tint, strokeWidth: 7 });
     drawEmoji(ctx, this.entry.emoji, p.cx, p.cy + bob - p.size * 0.04, p.size * 0.74, { shadow: true });
 
     // Slots
     this.slots.forEach((s, i) => {
-      const lift = this.wave >= 0 ? Math.max(0, Math.sin(this.wave - i * 0.5)) * 16 : 0;
+      const lift = px(this.wave >= 0 ? Math.max(0, Math.sin(this.wave - i * 0.5)) * 16 : 0);
       drawSlot(ctx, s.x, s.y - lift, s.w, s.h, {
-        r: 22, filled: !!s.tile, active: s.glow > 0.2, color: this.tint,
+        r: PX * 2, filled: !!s.tile, active: s.glow > 0.2, color: this.tint,
       });
       if (s.glow > 0.02) {
+        // Glow = a hard pixel ring blinking around the slot, never a soft halo.
         ctx.save();
-        ctx.globalAlpha = s.glow * 0.5;
-        roundRect(ctx, s.x - 6, s.y - lift - 6, s.w + 12, s.h + 12, 26);
-        ctx.lineWidth = 6;
+        ctx.globalAlpha = stepAlpha(s.glow * (Math.floor(this.t * 8) % 2 ? 0.25 : 0.5));
+        roundRect(ctx, s.x - PX * 2, s.y - lift - PX * 2, s.w + PX * 4, s.h + PX * 4, PX * 2);
+        ctx.lineWidth = PX * 2;
         ctx.strokeStyle = '#ffd76a';
         ctx.stroke();
         ctx.restore();
@@ -294,16 +295,16 @@ export default class WordBuilder extends Game {
     const wob = t.wobble > 0 ? Math.sin(this.t * 22) * 6 * t.wobble : 0;
     const s = scale * (1 + t.lift * 0.08);
     ctx.save();
-    ctx.translate(t.x + wob, t.y - lift - t.lift * 10);
+    // Snap the wobble/lift drift to the texel grid so the tile steps, never blurs.
+    ctx.translate(px(t.x + wob), px(t.y - lift - t.lift * 10));
     ctx.scale(s, s);
     if (t.dragging || t.lift > 0.1) {
-      ctx.shadowColor = 'rgba(44,35,64,0.35)';
-      ctx.shadowBlur = 24;
-      ctx.shadowOffsetY = 12;
+      // A lifted tile casts a hard offset silhouette, not a blurred shadow.
+      roundRect(ctx, -size / 2, -size / 2 + PX * 3, size, size, PX * 2);
+      ctx.fillStyle = HARD_SHADOW;
+      ctx.fill();
     }
-    candyRect(ctx, -size / 2, -size / 2, size, size, 22, t.slot >= 0 ? '#7fb0ff' : this.tint, { depth: 7 });
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetY = 0;
+    candyRect(ctx, -size / 2, -size / 2, size, size, PX * 2, t.slot >= 0 ? '#7fb0ff' : this.tint, { depth: 7 });
     // Lowercase on the tiles — that is what he meets in books.
     bubbleText(ctx, t.letter, 0, -3, size * 0.6, { fill: '#ffffff', stroke: '#25478f' });
     ctx.restore();

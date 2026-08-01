@@ -8,9 +8,12 @@
  */
 
 import { Game } from '../core/engine.js';
-import { drawEmoji, bubbleText, glassPanel, candyCircle, softText, Palette } from '../core/art.js';
+import {
+  drawEmoji, bubbleText, glassPanel, candyCircle, softText, Palette,
+  PX, px, stepAlpha, snapAngle, pixelRect, pixelRing, pixelLine, pixelPolyline,
+} from '../core/art.js';
 import { drawSprite, hasSprite } from '../core/sprites.js';
-import { randInt, shuffle, pick, dist, clamp, rand, TAU, shade, withAlpha } from '../core/util.js';
+import { randInt, shuffle, pick, dist, clamp, rand, TAU, shade } from '../core/util.js';
 import { COUNTABLES, numberWord, PRAISE } from '../data/words.js';
 
 const BALLOON_COLORS = ['#ff6b8b', '#ffc93c', '#4cc9f0', '#3ddc97', '#9b6cff', '#ff8fd0', '#ff9f1c'];
@@ -252,17 +255,12 @@ export default class BalloonMath extends Game {
       // shown faded and crossed through rather than added alongside.
       const taken = op === '−';
       ctx.save();
-      ctx.globalAlpha = taken ? 0.42 : 1;
+      ctx.globalAlpha = taken ? stepAlpha(0.42) : 1;
       drawEmoji(ctx, this.kind.emoji, x, rowY, size);
       if (taken) {
-        ctx.globalAlpha = 0.8;
-        ctx.strokeStyle = '#e14b6a';
-        ctx.lineWidth = 4;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(x - size * 0.34, rowY - size * 0.34);
-        ctx.lineTo(x + size * 0.34, rowY + size * 0.34);
-        ctx.stroke();
+        ctx.globalAlpha = stepAlpha(0.8);
+        pixelLine(ctx, x - size * 0.34, rowY - size * 0.34,
+          x + size * 0.34, rowY + size * 0.34, { color: '#e14b6a', width: PX });
       }
       ctx.restore();
       x += gap;
@@ -278,51 +276,54 @@ export default class BalloonMath extends Game {
     const wob = Math.sin(this.t * 2.2 + b.phase) * 0.05;
     const sprite = hasSprite(b.sprite);
     ctx.save();
-    ctx.translate(b.x, b.y);
-    ctx.rotate(wob);
+    // Hover position snaps to the texel grid so the bob steps instead of
+    // shimmering; the decorative wobble quantizes to the same TAU/24 steps as
+    // every other rotation in the kit.
+    ctx.translate(px(b.x), px(b.y));
+    ctx.rotate(snapAngle(wob));
     // A hint from the 🔊 button swells every balloon once.
     if (b.pulse > 0) {
       const s = 1 + Math.sin(b.pulse * Math.PI) * 0.09;
       ctx.scale(s, s);
     }
 
-    // string — same lazy curve either way, hung from wherever the knot ends up
-    // (the sprite's knot reaches lower than the drawn triangle did).
+    // string — the same lazy curve either way, hung from wherever the knot
+    // ends up (the sprite's knot reaches lower than the drawn chip does). The
+    // quadratic is math only now: sampled, snapped to the grid and stamped as
+    // a chain of pixel squares.
     const knotY = b.r * (sprite ? 1.42 : 0.98);
-    ctx.beginPath();
-    ctx.moveTo(0, knotY);
-    ctx.quadraticCurveTo(b.r * 0.3, knotY + b.r * 0.52,
-      Math.sin(this.t * 2 + b.phase) * b.r * 0.25, knotY + b.r * 1.12);
-    ctx.strokeStyle = 'rgba(70,55,90,0.5)';
-    ctx.lineWidth = 3;
-    ctx.stroke();
+    const endX = Math.sin(this.t * 2 + b.phase) * b.r * 0.25;
+    const cpX = b.r * 0.3, cpY = knotY + b.r * 0.52, endY = knotY + b.r * 1.12;
+    const stringPts = [];
+    for (let i = 0; i <= 8; i++) {
+      const u = i / 8, v = 1 - u;
+      stringPts.push([
+        px(2 * v * u * cpX + u * u * endX),
+        px(v * v * knotY + 2 * v * u * cpY + u * u * endY),
+      ]);
+    }
+    pixelPolyline(ctx, stringPts, { color: 'rgba(70,55,90,0.5)', width: PX });
 
     if (sprite) {
       // The cell is 64×96, so height 3r gives a body 2r across — the width the
-      // drawn circle had. The glow lives in the outer shadow: drawSprite's own
-      // save/restore leaves it alone.
-      ctx.save();
+      // drawn circle had. The hint glow is a pulsing hard ring hugging that
+      // body (its centre sits above the cell centre, where the numeral goes).
       if (b.glow > 0) {
-        ctx.shadowBlur = 30 * b.glow;
-        ctx.shadowColor = withAlpha(b.color, 0.9 * b.glow);
+        ctx.save();
+        ctx.globalAlpha *= stepAlpha((0.55 + 0.45 * Math.sin(this.t * 8)) * b.glow);
+        pixelRing(ctx, 0, -b.r * 0.22, b.r + PX * 3, PX * 2, shade(b.color, 0.45));
+        ctx.restore();
       }
       drawSprite(ctx, b.sprite, 0, 0, b.r * 3);
-      ctx.restore();
     } else {
-      // knot
-      ctx.beginPath();
-      ctx.moveTo(-8, b.r * 0.94);
-      ctx.lineTo(8, b.r * 0.94);
-      ctx.lineTo(0, b.r * 1.12);
-      ctx.closePath();
-      ctx.fillStyle = shade(b.color, -0.28);
-      ctx.fill();
+      // knot — a stepped pixel chip where the free-angle triangle used to be
+      pixelRect(ctx, -PX * 3, px(b.r * 0.94), PX * 6, PX * 4, {
+        fill: shade(b.color, -0.28), outline: shade(b.color, -0.5), chamfer: PX,
+      });
 
-      // body: slightly taller than wide, like a real balloon
-      ctx.save();
-      ctx.scale(1, 1.1);
+      // body — the shared texel-run disc; the old 1.1x vertical stretch would
+      // pull its texels off the grid, so the drawn balloon is simply round.
       candyCircle(ctx, 0, 0, b.r, b.color, { glow: b.glow, stroke: 'rgba(255,255,255,0.5)', strokeWidth: 3 });
-      ctx.restore();
     }
 
     // The sprite's knot takes up the bottom of the cell, so its body centre —

@@ -23,8 +23,8 @@
  */
 
 import { Game } from '../core/engine.js';
-import { Button } from '../core/ui.js';
-import { candyRect, roundRect, drawEmoji, bubbleText, softText, Palette } from '../core/art.js';
+import { Button, drawSlot } from '../core/ui.js';
+import { candyRect, drawEmoji, bubbleText, softText, Palette, PX, px, stepAlpha } from '../core/art.js';
 import { Ease } from '../core/anim.js';
 import { shuffle, pick, clamp, sampleAvoiding } from '../core/util.js';
 import {
@@ -268,12 +268,14 @@ export default class SoundSafari extends Game {
   draw(ctx) {
     const c = this.card;
     const slide = Ease.outCubic(clamp(this.cardSlide, 0, 1));
-    const bob = Math.sin(this.t * 1.6) * 6;
+    // Entrance and idle bob snap to the texel grid so the card steps in like a
+    // sprite instead of gliding, and the fade lands in eighths.
+    const bob = px(Math.sin(this.t * 1.6) * 6);
 
     ctx.save();
-    ctx.globalAlpha = slide;
-    ctx.translate(0, (1 - slide) * -80 + bob);
-    candyRect(ctx, c.x, c.y, c.w, c.h, 40, '#ffffff', { depth: 12, gloss: false, stroke: this.tint, strokeWidth: 8 });
+    ctx.globalAlpha = stepAlpha(slide);
+    ctx.translate(0, px((1 - slide) * -80) + bob);
+    candyRect(ctx, c.x, c.y, c.w, c.h, PX * 2, '#ffffff', { depth: 12, gloss: false, stroke: this.tint, strokeWidth: 8 });
     drawEmoji(ctx, this.entry.emoji, c.x + c.w / 2, c.y + c.h * 0.40, Math.min(c.w, c.h) * 0.54, { shadow: true });
     this.drawWord(ctx);
     ctx.restore();
@@ -288,15 +290,7 @@ export default class SoundSafari extends Game {
       const cx = s.x + s.w / 2;
       const cy = s.y + s.h / 2;
       if (s.blank && !this.revealed) {
-        ctx.save();
-        roundRect(ctx, s.x, s.y, s.w, s.h, 10);
-        ctx.fillStyle = 'rgba(0,0,0,0.05)';
-        ctx.fill();
-        ctx.setLineDash([8, 7]);
-        ctx.lineWidth = 5;
-        ctx.strokeStyle = this.tint;
-        ctx.stroke();
-        ctx.restore();
+        this.drawBlankSlot(ctx, s);
         continue;
       }
       // The found letter stays highlighted, so the answer is visible as part of
@@ -309,10 +303,15 @@ export default class SoundSafari extends Game {
     }
   }
 
+  /** The empty slot: the shared texel-dash well, dressed in this game's tint. */
+  drawBlankSlot(ctx, s) {
+    drawSlot(ctx, s.x, s.y, s.w, s.h, { fill: 'rgba(0,0,0,0.05)', stroke: this.tint });
+  }
+
   /** The winning letter travels above the tiles on its way to the word. */
   drawOverlay(ctx) {
     if (!this.flyer) return;
-    bubbleText(ctx, this.flyer.letter, this.flyer.x, this.flyer.y, this.flyer.size * 0.6, {
+    bubbleText(ctx, this.flyer.letter, px(this.flyer.x), px(this.flyer.y), this.flyer.size * 0.6, {
       fill: '#ffd76a', stroke: Palette.ink,
     });
   }

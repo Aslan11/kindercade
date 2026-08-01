@@ -11,8 +11,11 @@
 
 import { Game } from '../core/engine.js';
 import { Button } from '../core/ui.js';
-import { FONT_ROUND, softText, drawEmoji, glassPanel, Palette, roundRect } from '../core/art.js';
-import { shuffle, pick, clamp, TAU, mixHex } from '../core/util.js';
+import {
+  FONT_ROUND, softText, drawEmoji, glassPanel, Palette, roundRect,
+  PX, px, stepAlpha, pixelRect, pixelCircle, pixelPolyline,
+} from '../core/art.js';
+import { shuffle, pick, clamp, mixHex } from '../core/util.js';
 import { WORDS, numberWord, PRAISE } from '../data/words.js';
 
 const UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
@@ -23,6 +26,8 @@ const DIGITS = '0123456789'.split('');
 const DONE_AT = 0.72;
 /** Sampling grid step, in mask pixels. Coarse on purpose — this runs every frame-ish. */
 const STEP = 5;
+/** The crayon's four flat colours — the old hue drift, quantized to bands. */
+const CRAYON_COLORS = [0, 1, 2, 3].map((i) => mixHex('#00b8a9', '#5b8cff', i / 3));
 
 export default class LetterTrace extends Game {
   static meta = {
@@ -214,8 +219,10 @@ export default class LetterTrace extends Game {
   }
 
   crayonColor(t = 0) {
-    // A gentle hue drift along the stroke so it looks like a real crayon.
-    return mixHex('#00b8a9', '#5b8cff', (Math.sin(this.strokeHue + t) + 1) / 2);
+    // The crayon steps through a few flat colours along the stroke — bands,
+    // not a gradient, so the line reads as 16-bit.
+    const m = (Math.sin(this.strokeHue + t) + 1) / 2;
+    return CRAYON_COLORS[Math.min(CRAYON_COLORS.length - 1, Math.floor(m * CRAYON_COLORS.length))];
   }
 
   paintSegment(a, b) {
@@ -309,20 +316,21 @@ export default class LetterTrace extends Game {
     const b = this.box;
     glassPanel(ctx, b.x - 26, b.y - 26, b.w + 52, b.h + 52, 40, { alpha: 0.72 });
 
-    // Ruled guide lines, like handwriting paper.
+    // Ruled guide lines, like handwriting paper — texel dashes on the grid.
     ctx.save();
-    ctx.setLineDash([12, 14]);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = 'rgba(44,35,64,0.16)';
+    ctx.fillStyle = 'rgba(44,35,64,0.16)';
     [0.22, 0.52, 0.82].forEach((f) => {
-      ctx.beginPath();
-      ctx.moveTo(b.x - 14, b.y + b.h * f);
-      ctx.lineTo(b.x + b.w + 14, b.y + b.h * f);
-      ctx.stroke();
+      const gy = px(b.y + b.h * f);
+      const right = b.x + b.w + 14;
+      for (let gxx = px(b.x - 14); gxx < right; gxx += PX * 6) {
+        ctx.fillRect(gxx, gy, PX * 3, PX);
+      }
     });
     ctx.restore();
 
-    // The glyph itself: a soft fill plus a dashed outline to aim at.
+    // The glyph itself: a soft fill plus a dashed outline to aim at. Real
+    // letterforms stay (the one deliberate exception), but the marching ants
+    // step texel by texel instead of gliding.
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -331,36 +339,29 @@ export default class LetterTrace extends Game {
     const gy = b.y + b.h * 0.52;
     ctx.fillStyle = 'rgba(0,184,169,0.13)';
     ctx.fillText(this.glyph, gx, gy);
-    ctx.setLineDash([16, 16]);
-    ctx.lineDashOffset = -this.t * 24;
-    ctx.lineWidth = 4;
+    ctx.setLineDash([PX * 4, PX * 4]);
+    ctx.lineDashOffset = -px(this.t * 24);
+    ctx.lineWidth = PX;
     ctx.strokeStyle = 'rgba(0,140,130,0.5)';
     ctx.strokeText(this.glyph, gx, gy);
     ctx.restore();
 
-    // What the child has drawn, replayed as a chunky crayon line — clipped to
-    // the paper so a stray finger never scribbles across the whole screen.
+    // What the child has drawn, replayed as a chunky texel crayon — clipped to
+    // the paper (a stepped-chamfer path, so the cut-off edge reads square) so a
+    // stray finger never scribbles across the whole screen.
     ctx.save();
     roundRect(ctx, b.x - 20, b.y - 20, b.w + 40, b.h + 40, 34);
     ctx.clip();
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = b.w * 0.11;
+    const crayonW = Math.max(PX * 3, px(b.w * 0.11));
+    ctx.globalAlpha = stepAlpha(0.92);
     (this.strokes || []).forEach((stroke, si) => {
+      const color = this.crayonColor(si);
       if (stroke.length < 2) {
         if (!stroke.length) return;
-        ctx.beginPath();
-        ctx.arc(stroke[0].x, stroke[0].y, ctx.lineWidth / 2, 0, TAU);
-        ctx.fillStyle = this.crayonColor(si);
-        ctx.fill();
+        pixelCircle(ctx, stroke[0].x, stroke[0].y, crayonW / 2, { fill: color });
         return;
       }
-      ctx.beginPath();
-      ctx.moveTo(stroke[0].x, stroke[0].y);
-      for (let i = 1; i < stroke.length; i++) ctx.lineTo(stroke[i].x, stroke[i].y);
-      ctx.strokeStyle = this.crayonColor(si);
-      ctx.globalAlpha = 0.92;
-      ctx.stroke();
+      pixelPolyline(ctx, stroke.map((p) => [p.x, p.y]), { color, width: crayonW });
     });
     ctx.restore();
 
@@ -371,7 +372,7 @@ export default class LetterTrace extends Game {
       ctx.textBaseline = 'middle';
       ctx.font = `900 ${Math.round(b.h * 0.86)}px ${FONT_ROUND}`;
       ctx.fillStyle = '#00b8a9';
-      ctx.globalAlpha = 0.9;
+      ctx.globalAlpha = stepAlpha(0.9);
       ctx.fillText(this.glyph, gx, gy);
       ctx.restore();
       if (this.successWord) {
@@ -391,15 +392,10 @@ export default class LetterTrace extends Game {
     const sy = this.box.y + this.startDot[1] * inv;
 
     if (!this.strokes.length) {
-      const pulse = 1 + Math.sin(this.t * 4) * 0.18;
+      // The pulse steps between whole-texel radii rather than scaling smoothly.
+      const pulse = Math.round((Math.sin(this.t * 4) + 1));
       ctx.save();
-      ctx.beginPath();
-      ctx.arc(sx, sy, 22 * pulse, 0, TAU);
-      ctx.fillStyle = 'rgba(255,201,60,0.9)';
-      ctx.fill();
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = '#fff';
-      ctx.stroke();
+      pixelCircle(ctx, sx, sy, PX * 5 + pulse * PX, { fill: '#ffc93c', outline: '#ffffff' });
       softText(ctx, 'Start here', sx, sy - 46, 22, { color: Palette.inkSoft });
       ctx.restore();
     }
@@ -409,28 +405,25 @@ export default class LetterTrace extends Game {
       const k = Math.floor(((1 - this.ghost) * 2.6 % 1) * this.samples.length);
       const p = this.samples[clamp(k, 0, this.samples.length - 1)];
       ctx.save();
-      ctx.globalAlpha = clamp(this.ghost * 1.4, 0, 1);
-      ctx.beginPath();
-      ctx.arc(this.box.x + p[0] * inv, this.box.y + p[1] * inv, 18, 0, TAU);
-      ctx.fillStyle = 'rgba(91,140,255,0.85)';
-      ctx.fill();
+      ctx.globalAlpha = stepAlpha(clamp(this.ghost * 1.4, 0, 1) * 0.85);
+      pixelCircle(ctx, this.box.x + p[0] * inv, this.box.y + p[1] * inv, PX * 5, { fill: '#5b8cff' });
       ctx.restore();
     }
   }
 
   drawProgress(ctx) {
     const b = this.box;
-    const w = b.w * 0.7;
-    const x = this.cx - w / 2;
-    const y = b.y + b.h + 44;
-    roundRect(ctx, x, y, w, 20, 10);
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.fill();
+    const w = px(b.w * 0.7);
+    const x = px(this.cx - w / 2);
+    const y = px(b.y + b.h + 44);
+    const h = PX * 5;
+    pixelRect(ctx, x, y, w, h, { fill: 'rgba(255,255,255,0.7)', outline: 'rgba(44,35,64,0.4)', chamfer: PX });
     const filled = clamp(this.coverage / DONE_AT, 0, 1);
     if (filled > 0.01) {
-      roundRect(ctx, x, y, Math.max(20, w * filled), 20, 10);
+      // Flat fill inside the outline, its width stepping texel by texel.
       ctx.fillStyle = this.tint;
-      ctx.fill();
+      const fw = Math.min(w - PX * 2, Math.max(PX * 4, px((w - PX * 2) * filled)));
+      ctx.fillRect(x + PX, y + PX, fw, h - PX * 2);
     }
   }
 

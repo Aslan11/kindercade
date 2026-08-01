@@ -9,7 +9,7 @@
   --ink: #2c2340;
   --ink-soft: #6a5d86;
   --cream: #fff8ee;
-  --card-radius: 34px;
+  --card-radius: 4px;
   --touch: 64px;
   --font: ui-rounded, "SF Pro Rounded", "Nunito", system-ui, -apple-system,
           "Segoe UI", Roboto, sans-serif;
@@ -43,30 +43,53 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 
 /* ───────────────────────────── background ───────────────────────────── */
 
+/* Flat sky-to-peach bands; each seam is an 8px checkerboard dither strip —
+   the signature 16-bit blend, done with tiny inline-SVG tiles (no gradients). */
 #home {
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, #cfefff 0%, #ffe7c4 55%, #ffd9c0 100%);
+  background: #cfefff;
   overflow: hidden;
 }
 
 .sky { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 
-.blob {
+.sky-band {
   position: absolute;
-  border-radius: 50%;
-  filter: blur(2px);
-  opacity: 0.5;
-  animation: drift 26s ease-in-out infinite alternate;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-repeat: repeat-x;
+  background-position: top left;
+  background-size: 8px 8px;
+  image-rendering: pixelated;
 }
-.b1 { width: 340px; height: 340px; left: -80px; top: -60px;  background: radial-gradient(circle at 35% 30%, #fff, #bfe9ff); }
-.b2 { width: 260px; height: 260px; right: 6%;  top: 4%;      background: radial-gradient(circle at 35% 30%, #fff6d8, #ffd98a); animation-duration: 34s; }
-.b3 { width: 420px; height: 420px; left: 22%;  bottom: -180px; background: radial-gradient(circle at 40% 30%, #d8ffe6, #8ee8b4); animation-duration: 30s; }
-.b4 { width: 300px; height: 300px; right: -70px; bottom: -90px; background: radial-gradient(circle at 40% 30%, #ffe0f0, #ffb0d8); animation-duration: 38s; }
+.sky-mid {
+  top: 52%;
+  background-color: #ffe7c4;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%278%27 height=%278%27%3E%3Crect width=%278%27 height=%278%27 fill=%27%23ffe7c4%27/%3E%3Cpath d=%27M0 0h4v4H0zM4 4h4v4H4z%27 fill=%27%23cfefff%27/%3E%3C/svg%3E");
+}
+.sky-low {
+  top: 78%;
+  background-color: #ffd9c0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%278%27 height=%278%27%3E%3Crect width=%278%27 height=%278%27 fill=%27%23ffd9c0%27/%3E%3Cpath d=%27M0 0h4v4H0zM4 4h4v4H4z%27 fill=%27%23ffe7c4%27/%3E%3C/svg%3E");
+}
+
+/* Atlas cloud sprites drifting in whole-texel steps (steps() keeps the motion
+   chunky; no scaling so the texels never shimmer). */
+.cloud {
+  position: absolute;
+  opacity: 0.875;
+  animation: drift 26s steps(8) infinite alternate;
+}
+.c1 { left: -16px; top: 28px; }
+.c2 { right: 6%;  top: 44px;  animation-duration: 34s; }
+.c3 { left: 26%;  top: 13%;   animation-duration: 30s; }
+.c4 { right: 16%; top: 24%;   animation-duration: 38s; }
 
 @keyframes drift {
-  from { transform: translate3d(0, 0, 0) scale(1); }
-  to   { transform: translate3d(30px, -26px, 0) scale(1.09); }
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(32px, -24px, 0); }
 }
 
 /* ────────────────────────────── top bar ─────────────────────────────── */
@@ -92,7 +115,7 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   letter-spacing: -0.02em;
   line-height: 1;
   color: #ff7a3d;
-  text-shadow: 0 3px 0 #fff, 0 8px 18px rgba(255, 122, 61, 0.28);
+  text-shadow: 0 3px 0 #fff, 0 6px 0 rgba(255, 122, 61, 0.28);
 }
 .brand-text p { margin: 6px 0 0; font-size: clamp(14px, 2vw, 19px); font-weight: 700; color: var(--ink-soft); }
 
@@ -104,17 +127,17 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   gap: 9px;
   min-height: var(--touch);
   padding: 0 22px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 6px 0 rgba(44, 35, 64, 0.1), 0 10px 24px rgba(44, 35, 64, 0.14);
+  border-radius: 4px;
+  border: 3px solid var(--ink);
+  background: #fff;
+  box-shadow: 0 6px 0 rgba(44, 35, 64, 0.35);
   font-size: 21px;
   font-weight: 900;
   color: var(--ink);
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
-.chip:active { transform: translateY(4px); box-shadow: 0 2px 0 rgba(44, 35, 64, 0.1), 0 5px 14px rgba(44, 35, 64, 0.14); }
+.chip:active { transform: translateY(4px); box-shadow: 0 2px 0 rgba(44, 35, 64, 0.35); }
 .chip-ico { font-size: 27px; line-height: 1; }
-.chip.stars { background: linear-gradient(180deg, #fff2c4, #ffd870); }
+.chip.stars { background: #ffe28a; }
 
 /* ────────────────────────────── shelves ─────────────────────────────── */
 
@@ -137,12 +160,13 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   gap: 12px;
   margin: 0 0 11px;
   padding: 7px 22px 7px 14px;
-  border-radius: 999px;
+  border-radius: 4px;
+  border: 3px solid var(--ink);
   color: #fff;
   font-size: 24px;
   font-weight: 900;
   letter-spacing: 0.01em;
-  box-shadow: 0 6px 16px rgba(44, 35, 64, 0.2);
+  box-shadow: 0 4px 0 rgba(44, 35, 64, 0.18);
 }
 .shelf-head .ico { font-size: 30px; }
 
@@ -160,23 +184,49 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   min-height: 176px;
   padding: 18px;
   border-radius: var(--card-radius);
+  border: 3px solid var(--ink);
   color: #fff;
   text-align: left;
   overflow: hidden;
   isolation: isolate;
-  box-shadow: 0 10px 0 rgba(0, 0, 0, 0.13), 0 18px 34px rgba(44, 35, 64, 0.24);
-  transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.14s ease;
+  box-shadow: 0 10px 0 rgba(0, 0, 0, 0.13);
 }
-.card:active { transform: translateY(7px) scale(0.985); box-shadow: 0 3px 0 rgba(0, 0, 0, 0.13), 0 8px 18px rgba(44, 35, 64, 0.22); }
+.card:active { transform: translateY(7px); box-shadow: 0 3px 0 rgba(0, 0, 0, 0.13); }
 
-/* Glossy sweep across the top of every card. */
+/* Single hard highlight line along the inside top edge (SNES bezel style). */
 .card::before {
   content: "";
   position: absolute;
   inset: 0 0 auto 0;
-  height: 58%;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0));
+  height: 3px;
+  background: rgba(255, 255, 255, 0.5);
   z-index: -1;
+}
+
+/* Flat dark lip along the inside bottom edge. */
+.card::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 6px;
+  background: rgba(44, 35, 64, 0.18);
+  z-index: -1;
+}
+
+/* Flat second-tint band across the card bottom, joined by a checkerboard
+   dither seam (inline style from buildHome carries the two tints). */
+.card-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 42%;
+  z-index: -1;
+  background-repeat: repeat-x;
+  background-position: top left;
+  background-size: 8px 8px;
+  image-rendering: pixelated;
+  pointer-events: none;
 }
 
 /* The emoji sits in the card's top-right corner; the text reserves room for it
@@ -187,8 +237,7 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   top: 4px;
   font-size: 74px;
   line-height: 1;
-  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.28));
-  transform: rotate(-8deg);
+  filter: drop-shadow(0 4px 0 rgba(44, 35, 64, 0.28));
   pointer-events: none;
 }
 
@@ -198,13 +247,13 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   font-size: 25px;
   font-weight: 900;
   line-height: 1.1;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.28);
 }
 .card p { margin: 5px 0 0; font-size: 15px; font-weight: 700; opacity: 0.94; line-height: 1.26; }
 
 .card-stars { display: flex; gap: 5px; margin-top: 12px; font-size: 20px; }
-.card-stars .s { opacity: 0.55; filter: grayscale(1); }
-.card-stars .s.on { opacity: 1; filter: drop-shadow(0 0 8px rgba(255, 220, 120, 0.9)); text-shadow: 0 0 12px rgba(255, 220, 120, 0.9); }
+.card-stars .s { opacity: 0.75; }
+.card-stars .s.on { opacity: 1; }
 /* Pixel-art sprites shown in the DOM shell (chips, cards, stickers). */
 .spr { display: inline-block; vertical-align: middle; image-rendering: pixelated; }
 
@@ -239,8 +288,6 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   align-items: center;
   justify-content: center;
   background: rgba(21, 15, 40, 0.82);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
   pointer-events: none;
   z-index: 3;
 }
@@ -250,12 +297,15 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   align-items: center;
   gap: 10px;
   padding: 34px 40px;
-  border-radius: 30px;
+  border-radius: 4px;
+  border: 3px solid var(--ink);
   background: #fff;
+  box-shadow: 0 8px 0 rgba(0, 0, 0, 0.35);
   text-align: center;
   max-width: 78vw;
 }
-.rotate-ico { font-size: 62px; animation: spin 2.6s ease-in-out infinite; }
+/* steps(6) over a 90° swing = 15° increments (TAU/24). */
+.rotate-ico { font-size: 62px; animation: spin 2.6s steps(6) infinite; }
 .rotate-card strong { font-size: 24px; }
 .rotate-card span:last-child { font-size: 17px; color: var(--ink-soft); font-weight: 700; }
 @keyframes spin { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(90deg); } }
@@ -276,9 +326,7 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   justify-content: center;
   padding: 24px;
   background: rgba(30, 22, 48, 0.55);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  animation: fade 0.18s ease;
+  animation: fade 0.18s steps(8, end);
 }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
@@ -289,12 +337,13 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 34px;
-  border-radius: 40px;
+  border-radius: 4px;
+  border: 3px solid var(--ink);
   background: var(--cream);
-  box-shadow: 0 26px 60px rgba(0, 0, 0, 0.35);
-  animation: pop 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 8px 0 rgba(0, 0, 0, 0.35);
+  animation: pop 0.24s steps(4, end);
 }
-@keyframes pop { from { transform: scale(0.86) translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes pop { from { transform: translateY(16px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 .sheet-close {
   position: absolute;
@@ -302,13 +351,15 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   right: 16px;
   width: 56px;
   height: 56px;
-  border-radius: 50%;
-  background: rgba(44, 35, 64, 0.09);
+  border-radius: 4px;
+  border: 3px solid var(--ink);
+  background: #fff;
+  box-shadow: 0 3px 0 rgba(44, 35, 64, 0.18);
   font-size: 24px;
   font-weight: 900;
   color: var(--ink-soft);
 }
-.sheet-close:active { transform: scale(0.92); }
+.sheet-close:active { transform: translateY(3px); box-shadow: none; }
 
 .sheet h2 { margin: 0 0 6px; font-size: 34px; font-weight: 900; }
 .sheet .sub { margin: 0 0 22px; font-size: 17px; font-weight: 700; color: var(--ink-soft); }
@@ -318,13 +369,13 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   display: grid;
   place-items: center;
   aspect-ratio: 1;
-  border-radius: 26px;
+  border-radius: 4px;
   font-size: 46px;
   background: #fff;
-  box-shadow: inset 0 0 0 3px rgba(44, 35, 64, 0.07), 0 6px 14px rgba(44, 35, 64, 0.1);
+  box-shadow: inset 0 0 0 3px rgba(44, 35, 64, 0.14), 0 4px 0 rgba(44, 35, 64, 0.12);
 }
 .sticker.locked { background: rgba(44, 35, 64, 0.05); box-shadow: none; font-size: 30px; opacity: 0.4; }
-.sticker.new { animation: pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.sticker.new { animation: pop 0.4s steps(4, end) both; }
 
 .setting-row {
   display: flex;
@@ -357,8 +408,8 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   min-width: 0;
   height: 52px;
   padding: 0 14px;
-  border-radius: 16px;
-  border: 3px solid rgba(44, 35, 64, 0.14);
+  border-radius: 4px;
+  border: 3px solid rgba(44, 35, 64, 0.35);
   background: #fff;
   font: inherit;
   font-size: 17px;
@@ -369,7 +420,8 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   flex: none;
   height: 52px;
   padding: 0 18px;
-  border-radius: 16px;
+  border-radius: 4px;
+  border: 3px solid var(--ink);
   background: #7fd1ff;
   color: var(--ink);
   font-size: 17px;
@@ -384,26 +436,26 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   accent-color: #3ddc97;
 }
 
+/* Chunky square switch: the knob snaps across instantly, 16-bit style. */
 .toggle {
   position: relative;
   width: 92px;
   height: 52px;
   flex: none;
-  border-radius: 999px;
+  border-radius: 4px;
+  border: 3px solid var(--ink);
   background: rgba(44, 35, 64, 0.18);
-  transition: background 0.18s ease;
 }
 .toggle::after {
   content: "";
   position: absolute;
-  top: 5px;
-  left: 5px;
+  top: 2px;
+  left: 2px;
   width: 42px;
   height: 42px;
-  border-radius: 50%;
+  border-radius: 4px;
   background: #fff;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.24);
-  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.24);
 }
 .toggle[aria-checked="true"] { background: #3ddc97; }
 .toggle[aria-checked="true"]::after { transform: translateX(40px); }
@@ -412,13 +464,15 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   margin-top: 22px;
   width: 100%;
   min-height: var(--touch);
-  border-radius: 22px;
+  border-radius: 4px;
+  border: 3px solid #d13f61;
   background: rgba(255, 107, 139, 0.16);
+  box-shadow: 0 4px 0 rgba(209, 63, 97, 0.3);
   color: #d13f61;
   font-size: 19px;
   font-weight: 900;
 }
-.danger:active { transform: scale(0.98); }
+.danger:active { transform: translateY(2px); box-shadow: 0 2px 0 rgba(209, 63, 97, 0.3); }
 
 /* ───────────────────────── first-tap sound prompt ───────────────────── */
 
@@ -429,20 +483,20 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
   display: flex;
   justify-content: center;
   pointer-events: none;
-  animation: rise 0.5s ease both;
+  animation: rise 0.5s steps(4, end) both;
 }
-@keyframes rise { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+@keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 .boot-card {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 14px 26px;
-  border-radius: 999px;
+  border-radius: 4px;
   background: rgba(44, 35, 64, 0.9);
   color: #fff;
   font-size: 18px;
   font-weight: 800;
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.3);
 }
 .boot-card span { font-size: 24px; }
 
@@ -450,7 +504,7 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 
 @media (max-width: 620px) {
   .cards { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; }
-  .card { min-height: 158px; padding: 15px; border-radius: 28px; }
+  .card { min-height: 158px; padding: 15px; }
   .card-emoji { font-size: 64px; }
   .card h3 { font-size: 21px; }
   .card p { display: none; }
@@ -460,6 +514,6 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .blob, .rotate-ico { animation: none; }
+  .cloud, .rotate-ico { animation: none; }
   .sheet, .overlay, .boot-tap { animation: none; }
 }

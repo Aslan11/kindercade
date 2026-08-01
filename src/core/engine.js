@@ -86,7 +86,10 @@ export class Engine {
     this.scale = Math.min(this.canvas.width / this.W, this.canvas.height / this.H);
     this.offsetX = Math.round((this.canvas.width - this.W * this.scale) / 2);
     this.offsetY = Math.round((this.canvas.height - this.H * this.scale) / 2);
-    this.ctx.imageSmoothingQuality = 'high';
+    // Nearest-neighbour for the whole frame — sprite blits and scaled pixel
+    // art stay chunky-crisp, matching sprites.js. (Resizing the canvas resets
+    // context state, so this must be re-applied here.)
+    this.ctx.imageSmoothingEnabled = false;
 
     if (this.game) {
       this.game.W = this.W;

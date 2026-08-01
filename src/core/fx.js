@@ -3,12 +3,22 @@
  *
  * This is the layer that makes a correct answer *feel* like a win. Every game
  * gets one `FX` instance on `this.fx`, stepped and drawn by the engine.
+ *
+ * Physics stays continuous; the 16-bit look happens at draw time — positions
+ * snap to the texel grid, rotations quantize to TAU/24, fades step in eighths,
+ * and every pictorial particle blits from the sprite atlas (confetti pieces,
+ * stars, sparkles) with pixel-square puffs and pixel-ring shockwaves for the
+ * rest.
  */
 
 import { TAU, rand, randInt, pick, clamp } from './util.js';
-import { starPath, sparklePath, drawEmoji, roundRect } from './art.js';
+import { starPath, drawEmoji, PX, px, stepAlpha, snapAngle, pixelRing } from './art.js';
+import { drawSprite } from './sprites.js';
 
 const CONFETTI_COLORS = ['#ff6b8b', '#ffc93c', '#4cc9f0', '#3ddc97', '#9b6cff', '#ff8fd0', '#ff9f1c'];
+
+/** The four paper-scrap sprites in the atlas — one is picked per particle. */
+const CONFETTI_SPRITES = ['confetti-rect', 'confetti-ribbon', 'confetti-star', 'confetti-dot'];
 
 class Particle {
   constructor(cfg) { Object.assign(this, cfg); this.age = 0; }
@@ -38,7 +48,7 @@ export class FX {
         vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - (up ? rand(200, 500) : 0),
         w: rand(10, 20), h: rand(14, 26),
         rot: rand(0, TAU), spin: rand(-9, 9),
-        color: pick(CONFETTI_COLORS),
+        color: pick(CONFETTI_COLORS), sprite: pick(CONFETTI_SPRITES),
         life: rand(1.2, 2.2), drag: 0.62, grav: 1,
       }));
     }
@@ -53,7 +63,7 @@ export class FX {
         vx: rand(-70, 70), vy: rand(120, 320),
         w: rand(10, 20), h: rand(14, 26),
         rot: rand(0, TAU), spin: rand(-7, 7),
-        color: pick(CONFETTI_COLORS),
+        color: pick(CONFETTI_COLORS), sprite: pick(CONFETTI_SPRITES),
         life: rand(2.4, 4), drag: 0.9, grav: 0.22,
       }));
     }
@@ -106,7 +116,7 @@ export class FX {
     }
   }
 
-  /** Soft dust puff — good for landings and "poof, it's gone". */
+  /** Blocky dust puff — good for landings and "poof, it's gone". */
   puff(x, y, count = 10, color = 'rgba(255,255,255,0.9)') {
     for (let i = 0; i < count; i++) {
       const a = rand(0, TAU);
@@ -167,51 +177,56 @@ export class FX {
   draw(ctx) {
     for (const p of this.particles) {
       const t = p.age / p.life;
-      const alpha = t < 0.75 ? 1 : 1 - (t - 0.75) / 0.25;
+      // Steppy 16-bit fade — alpha quantized to eighths.
+      const alpha = stepAlpha(t < 0.75 ? 1 : 1 - (t - 0.75) / 0.25);
+      if (alpha <= 0) continue;
       ctx.save();
-      ctx.globalAlpha = clamp(alpha, 0, 1);
+      ctx.globalAlpha = alpha;
+      const dx = px(p.x), dy = px(p.y);
 
       if (p.kind === 'ring') {
-        const r = p.r0 + (p.r1 - p.r0) * (1 - (1 - t) ** 2);
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, r, 0, TAU);
-        ctx.lineWidth = p.width * (1 - t);
-        ctx.strokeStyle = p.color;
-        ctx.globalAlpha *= 0.8;
-        ctx.stroke();
+        // Pixel-circle shockwave: radius on the grid, thickness in texels.
+        const r = px(p.r0 + (p.r1 - p.r0) * (1 - (1 - t) ** 2));
+        ctx.globalAlpha = stepAlpha(alpha * 0.8);
+        pixelRing(ctx, dx, dy, r, Math.max(PX, px(p.width * (1 - t))), p.color);
       } else if (p.kind === 'confetti') {
-        ctx.translate(p.x, p.y);
-        ctx.rotate(p.rot);
-        // Flip on the vertical axis so it reads as a tumbling paper strip.
-        ctx.scale(1, Math.cos(p.age * 9) * 0.85 + 0.15);
-        ctx.fillStyle = p.color;
-        roundRect(ctx, -p.w / 2, -p.h / 2, p.w, p.h, 3);
-        ctx.fill();
+        ctx.translate(dx, dy);
+        ctx.rotate(snapAngle(p.rot));
+        // Tumble reads as a few discrete flip frames, not a smooth squash.
+        const flip = Math.round((Math.cos(p.age * 9) * 0.85 + 0.15) * 4) / 4;
+        ctx.scale(1, Math.max(0.25, Math.abs(flip)));
+        if (!drawSprite(ctx, p.sprite, 0, 0, p.h * 1.1)) {
+          // pre-atlas fallback: a flat pixel scrap
+          ctx.fillStyle = p.color;
+          ctx.fillRect(px(-p.w / 2), px(-p.h / 2), Math.max(PX, px(p.w)), Math.max(PX, px(p.h)));
+        }
       } else if (p.kind === 'star') {
-        ctx.translate(p.x, p.y);
-        ctx.rotate(p.rot);
-        starPath(ctx, 0, 0, p.r, p.r * 0.45, 5);
-        ctx.fillStyle = p.color;
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 14;
-        ctx.fill();
+        ctx.translate(dx, dy);
+        if (!drawSprite(ctx, 'icon-star', 0, 0, p.r * 2.2, { rotate: snapAngle(p.rot) })) {
+          ctx.rotate(snapAngle(p.rot));
+          starPath(ctx, 0, 0, p.r, p.r * 0.45, 5);
+          ctx.fillStyle = p.color;
+          ctx.fill();
+        }
       } else if (p.kind === 'sparkle') {
-        ctx.translate(p.x, p.y);
-        ctx.rotate(p.rot);
-        const s = 1 - Math.abs(t - 0.3) * 0.9;
-        sparklePath(ctx, 0, 0, p.r * clamp(s, 0.2, 1.4));
-        ctx.fillStyle = p.color;
-        ctx.shadowColor = p.color;
-        ctx.shadowBlur = 16;
-        ctx.fill();
+        ctx.translate(dx, dy);
+        // Scale pulse in quarter steps so the sprite pops frame by frame.
+        const s = Math.round(clamp(1 - Math.abs(t - 0.3) * 0.9, 0.25, 1.5) * 4) / 4;
+        if (!drawSprite(ctx, 'sparkle-star', 0, 0, p.r * 2 * s, { rotate: snapAngle(p.rot) })) {
+          // pixel plus twinkle
+          const arm = Math.max(PX, px(p.r * s));
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-PX / 2, -arm, PX, arm * 2);
+          ctx.fillRect(-arm, -PX / 2, arm * 2, PX);
+        }
       } else if (p.kind === 'emoji') {
-        drawEmoji(ctx, p.ch, p.x, p.y, p.size, { rotate: p.rot });
-      } else { // puff
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r * (1 + t * 0.8), 0, TAU);
+        drawEmoji(ctx, p.ch, dx, dy, p.size, { rotate: snapAngle(p.rot) });
+      } else { // puff — a chunky blob of texel squares growing in PX steps
+        const s = Math.max(PX, px(p.r * (1 + t * 0.8)));
+        ctx.globalAlpha = stepAlpha(alpha * 0.55);
         ctx.fillStyle = p.color;
-        ctx.globalAlpha *= 0.55;
-        ctx.fill();
+        ctx.fillRect(dx - s, dy - s + PX, s * 2, s * 2 - PX * 2);
+        ctx.fillRect(dx - s + PX, dy - s, s * 2 - PX * 2, s * 2);
       }
       ctx.restore();
     }
@@ -219,10 +234,11 @@ export class FX {
     for (const f of this.floaters) {
       const t = f.age / f.maxLife;
       const y = f.y - f.rise * (1 - (1 - t) ** 2);
-      const pop = t < 0.18 ? 0.6 + (t / 0.18) * 0.5 : 1;
+      // Pop scale steps through a few discrete sizes; fade steps in eighths.
+      const pop = Math.round((t < 0.18 ? 0.6 + (t / 0.18) * 0.5 : 1) * 8) / 8;
       ctx.save();
-      ctx.globalAlpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
-      ctx.translate(f.x, y);
+      ctx.globalAlpha = stepAlpha(t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3);
+      ctx.translate(px(f.x), px(y));
       ctx.scale(pop, pop);
       ctx.font = `900 ${f.size}px ui-rounded, "SF Pro Rounded", system-ui, sans-serif`;
       ctx.textAlign = 'center';
