@@ -6,6 +6,8 @@
  * bricking the arcade.
  */
 
+import { spriteNameFor } from './sprites.js';
+
 const KEY = 'kindercade.save.v1';
 
 const DEFAULTS = {
@@ -13,7 +15,7 @@ const DEFAULTS = {
   voice: true,
   voiceURI: '',          // '' = let the audio kit pick the best one it can find
   speechRate: 1,         // global speed trim for the talking voice
-  stickers: [],          // emoji collected into the sticker book
+  stickers: [],          // sprite names collected into the sticker book
   games: {},             // id -> { stars, best, plays, level }
   totalStars: 0,
   lastPlayed: null,
@@ -24,7 +26,12 @@ function load() {
     const raw = localStorage.getItem(KEY);
     if (!raw) return { ...DEFAULTS };
     const data = JSON.parse(raw);
-    return { ...DEFAULTS, ...data, games: { ...(data.games || {}) }, stickers: [...(data.stickers || [])] };
+    // Saves from the emoji era stored stickers as emoji characters; migrate
+    // them to sprite names so the collection survives the art change.
+    const stickers = [...new Set(
+      [...(data.stickers || [])].map((s) => spriteNameFor(s) || s).filter((s) => STICKERS.includes(s)),
+    )];
+    return { ...DEFAULTS, ...data, games: { ...(data.games || {}) }, stickers };
   } catch (_) {
     return { ...DEFAULTS };
   }
@@ -115,12 +122,12 @@ class Progress {
   }
 }
 
-/** The sticker book: 36 collectables, unlocked 1 per 3 stars. */
+/** The sticker book: 36 collectables (sprite names), unlocked 1 per 3 stars. */
 export const STICKERS = [
-  '🦊', '🐼', '🦁', '🐸', '🐙', '🦄', '🐝', '🦋', '🐳', '🦕', '🐧', '🦉',
-  '🌈', '⭐️', '🌟', '🍀', '🌻', '🌸', '🍉', '🍩', '🧁', '🍪',
-  '🚀', '🎈', '🎨', '🎸', '⚽️', '🏰', '🛼', '🪁', '🎠', '🧩',
-  '💎', '🔮', '🏆', '👑',
+  'fox', 'panda', 'lion', 'frog', 'octopus', 'unicorn', 'bee', 'butterfly', 'whale', 'dinosaur', 'penguin', 'owl',
+  'rainbow', 'star', 'sparkle-star', 'clover', 'sunflower', 'blossom', 'watermelon', 'donut', 'cupcake', 'cookie',
+  'rocket', 'balloon', 'palette', 'guitar', 'ball', 'castle', 'roller-skate', 'kite', 'carousel', 'puzzle-piece',
+  'gem', 'crystal-ball', 'trophy', 'crown',
 ];
 
 export const progress = new Progress();

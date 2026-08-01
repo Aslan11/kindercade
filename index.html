@@ -41,13 +41,13 @@
     </div>
     <div class="topbar-actions">
       <button class="chip stars" id="star-chip" type="button" aria-label="Stars earned">
-        <span class="chip-ico">⭐️</span><span id="star-count">0</span>
+        <span class="chip-ico" data-sprite="icon-star" data-sprite-size="27">⭐️</span><span id="star-count">0</span>
       </button>
       <button class="chip" id="sticker-btn" type="button" aria-label="Sticker book">
-        <span class="chip-ico">🎁</span><span class="chip-label">Stickers</span>
+        <span class="chip-ico" data-sprite="icon-gift" data-sprite-size="27">🎁</span><span class="chip-label">Stickers</span>
       </button>
       <button class="chip" id="settings-btn" type="button" aria-label="Settings">
-        <span class="chip-ico">⚙️</span>
+        <span class="chip-ico" data-sprite="icon-gear" data-sprite-size="27">⚙️</span>
       </button>
     </div>
   </header>
@@ -64,7 +64,7 @@
   <canvas id="game-canvas"></canvas>
   <div id="rotate-hint" class="rotate-hint">
     <div class="rotate-card">
-      <span class="rotate-ico">🔄</span>
+      <span class="rotate-ico" data-sprite="icon-rotate" data-sprite-size="62">🔄</span>
       <strong>Turn your iPad sideways</strong>
       <span>These games are best in landscape.</span>
     </div>
@@ -80,7 +80,7 @@
 </div>
 
 <div id="boot-tap" class="boot-tap" hidden>
-  <div class="boot-card"><span>🔈</span><strong>Tap anywhere to turn on sound</strong></div>
+  <div class="boot-card"><span data-sprite="icon-speaker" data-sprite-size="24">🔈</span><strong>Tap anywhere to turn on sound</strong></div>
 </div>
 
 <script type="module" src="src/app.js"></script>

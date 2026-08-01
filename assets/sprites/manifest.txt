@@ -1,0 +1,258 @@
+KINDERCADE 16-BIT SPRITE SHEETS — MANIFEST
+==========================================
+
+## pip.png
+cell 96x96  grid 6x1 cols,rows  (6 sprites)
+name -> col,row
+  pip-happy  0,0
+  pip-cheer  1,0
+  pip-think  2,0
+  pip-oops   3,0
+  pip-blink  4,0
+  pip-wave   5,0
+
+## icons.png
+cell 32x32  grid 5x4 cols,rows  (20 sprites)
+name -> col,row
+  icon-star        0,0
+  icon-star-empty  1,0
+  icon-home        2,0
+  icon-speaker     3,0
+  icon-again       4,0
+  icon-next        0,1
+  icon-hint        1,1
+  icon-undo        2,1
+  icon-flame       3,1
+  icon-gift        4,1
+  icon-gear        0,2
+  icon-rotate      1,2
+  icon-question    2,2
+  icon-party       3,2
+  icon-lock        4,2
+  icon-numbers     0,3
+  icon-words       1,3
+  icon-puzzles     2,3
+  icon-controller  3,3
+  icon-close       4,3
+
+## pictures.png
+cell 64x64  grid 12x12 cols,rows  (142 sprites)
+name -> col,row
+  cat            0,0
+  dog            1,0
+  pig            2,0
+  cow            3,0
+  fox            4,0
+  bee            5,0
+  ant            6,0
+  owl            7,0
+  bat            8,0
+  hen            9,0
+  fish           10,0
+  frog           11,0
+  bear           0,1
+  lion           1,1
+  duck           2,1
+  bird           3,1
+  crab           4,1
+  goat           5,1
+  wolf           6,1
+  deer           7,1
+  moth           8,1
+  horse          9,1
+  snake          10,1
+  mouse          11,1
+  sheep          0,2
+  whale          1,2
+  tiger          2,2
+  zebra          3,2
+  panda          4,2
+  koala          5,2
+  skunk          6,2
+  butterfly      7,2
+  turtle         8,2
+  penguin        9,2
+  octopus        10,2
+  unicorn        11,2
+  dinosaur       0,3
+  ladybug        1,3
+  tropical-fish  2,3
+  seashell       3,3
+  nest           4,3
+  web            5,3
+  apple          6,3
+  egg            7,3
+  pie            8,3
+  nut            9,3
+  cake           10,3
+  milk           11,3
+  corn           0,4
+  pear           1,4
+  bread          2,4
+  pizza          3,4
+  grape          4,4
+  peach          5,4
+  lemon          6,4
+  melon          7,4
+  candy          8,4
+  donut          9,4
+  cookie         10,4
+  cupcake        11,4
+  watermelon     0,5
+  banana         1,5
+  strawberry     2,5
+  mushroom       3,5
+  pumpkin        4,5
+  cup            5,5
+  sun            6,5
+  star           7,5
+  sparkle-star   8,5
+  moon           9,5
+  tree           10,5
+  leaf           11,5
+  rain           0,6
+  cloud          1,6
+  fire           2,6
+  rock           3,6
+  rainbow        4,6
+  clover         5,6
+  sunflower      6,6
+  blossom        7,6
+  flower         8,6
+  tulip          9,6
+  cactus         10,6
+  mountain       11,6
+  water-drop     0,7
+  wave           1,7
+  hat            2,7
+  cap            3,7
+  bus            4,7
+  car            5,7
+  van            6,7
+  box            7,7
+  key            8,7
+  bed            9,7
+  jar            10,7
+  log            11,7
+  pen            0,8
+  axe            1,8
+  map            2,8
+  gem            3,8
+  book           4,8
+  ball           5,8
+  drum           6,8
+  bell           7,8
+  boat           8,8
+  kite           9,8
+  sock           10,8
+  ring           11,8
+  gift           0,9
+  door           1,9
+  lamp           2,9
+  shoe           3,9
+  hand           4,9
+  train          5,9
+  house          6,9
+  plane          7,9
+  truck          8,9
+  robot          9,9
+  crown          10,9
+  chair          11,9
+  clock          0,10
+  brush          1,10
+  heart          2,10
+  balloon        3,10
+  rocket         4,10
+  palette        5,10
+  guitar         6,10
+  castle         7,10
+  roller-skate   8,10
+  carousel       9,10
+  puzzle-piece   10,10
+  crystal-ball   11,10
+  trophy         0,11
+  playing-cards  1,11
+  pencil         2,11
+  letter-blocks  3,11
+  flag           4,11
+  planet         5,11
+  comet          6,11
+  hibiscus       7,11
+  herb-sprig     8,11
+  honey-pot      9,11
+
+## shapes.png
+cell 32x32  grid 6x6 cols,rows  (36 sprites)
+name -> col,row
+  circle-pink      0,0
+  circle-gold      1,0
+  circle-sky       2,0
+  circle-mint      3,0
+  circle-purple    4,0
+  circle-orange    5,0
+  square-pink      0,1
+  square-gold      1,1
+  square-sky       2,1
+  square-mint      3,1
+  square-purple    4,1
+  square-orange    5,1
+  triangle-pink    0,2
+  triangle-gold    1,2
+  triangle-sky     2,2
+  triangle-mint    3,2
+  triangle-purple  4,2
+  triangle-orange  5,2
+  star-pink        0,3
+  star-gold        1,3
+  star-sky         2,3
+  star-mint        3,3
+  star-purple      4,3
+  star-orange      5,3
+  heart-pink       0,4
+  heart-gold       1,4
+  heart-sky        2,4
+  heart-mint       3,4
+  heart-purple     4,4
+  heart-orange     5,4
+  diamond-pink     0,5
+  diamond-gold     1,5
+  diamond-sky      2,5
+  diamond-mint     3,5
+  diamond-purple   4,5
+  diamond-orange   5,5
+
+## game-bits.png
+sheet 448x192  mixed cells
+name -> x,y,w,h (px)
+  balloon-pink     0,0,64,96
+  balloon-gold     64,0,64,96
+  balloon-sky      128,0,64,96
+  balloon-mint     192,0,64,96
+  balloon-purple   256,0,64,96
+  balloon-orange   320,0,64,96
+  balloon-red      384,0,64,96
+  cookie-1         0,96,64,64
+  cookie-2         64,96,64,64
+  cookie-3         128,96,64,64
+  cookie-dark      192,96,64,64
+  gold-star-big    256,96,64,64
+  gold-star-empty  320,96,64,64
+  card-back-tile   384,96,32,32
+  confetti-rect    384,128,16,16
+  confetti-ribbon  400,128,16,16
+  confetti-star    384,144,16,16
+  confetti-dot     400,144,16,16
+
+## scenes
+512x384 each, opaque (no transparency)
+  scene-fox.png
+  scene-turtle.png
+  scene-train.png
+  scene-whale.png
+  scene-butterfly.png
+  scene-castle.png
+  scene-rocket.png
+  scene-bee.png
+
+All sheet PNGs have transparent backgrounds, 1px #3a2b23 outline, top-left light source,
+no anti-aliasing. Scale with nearest-neighbour only.

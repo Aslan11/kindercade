@@ -11,8 +11,24 @@ import { audio } from './core/audio.js';
 import { progress, STICKERS } from './core/progress.js';
 import { GAMES, SHELVES, gameById } from './games/index.js';
 import { drawPip } from './core/art.js';
+import { loadSprites, spriteStyle } from './core/sprites.js';
 
 const $ = (sel) => document.querySelector(sel);
+
+/** Inline-styled sprite element for the DOM shell; '' when unavailable. */
+const spr = (key, size) => {
+  const style = spriteStyle(key, size);
+  return style ? `<i class="spr" style="${style}" aria-hidden="true"></i>` : '';
+};
+
+/** Swap the static emoji placeholders (chips, rotate hint…) for sprites. */
+function applySpriteIcons() {
+  document.querySelectorAll('[data-sprite]').forEach((el) => {
+    const size = parseInt(el.dataset.spriteSize, 10) || 27;
+    const style = spriteStyle(el.dataset.sprite, size);
+    if (style) { el.textContent = ''; el.style.cssText += `display:inline-block;${style}`; }
+  });
+}
 
 const el = {
   home: $('#home'),
@@ -57,7 +73,11 @@ function armAudio() {
 /* ──────────────────────────────── home screen ───────────────────────────── */
 
 function starRow(count) {
-  return [0, 1, 2].map((i) => `<span class="s${i < count ? ' on' : ''}">⭐️</span>`).join('');
+  return [0, 1, 2].map((i) => {
+    const on = i < count;
+    const icon = spr(on ? 'icon-star' : 'icon-star-empty', 22) || '⭐️';
+    return `<span class="s${on ? ' on' : ''}">${icon}</span>`;
+  }).join('');
 }
 
 function buildHome() {
@@ -67,7 +87,7 @@ function buildHome() {
       <button class="card" type="button" data-game="${g.id}"
               style="background:linear-gradient(150deg, ${g.tint}, ${g.tint2})"
               aria-label="${g.title}. ${g.skill}">
-        <span class="card-emoji" aria-hidden="true">${g.emoji}</span>
+        <span class="card-emoji" aria-hidden="true">${spr(g.emoji, 74) || g.emoji}</span>
         <h3>${g.title}</h3>
         <p>${g.blurb}</p>
         <span class="card-stars" aria-hidden="true">${starRow(progress.starsFor(g.id))}</span>
@@ -75,7 +95,7 @@ function buildHome() {
     return `
       <section class="shelf">
         <h2 class="shelf-head" style="background:linear-gradient(120deg, ${shelf.color}, ${shelf.color2})">
-          <span class="ico" aria-hidden="true">${shelf.emoji}</span>${shelf.title}
+          <span class="ico" aria-hidden="true">${spr(shelf.emoji, 30) || shelf.emoji}</span>${shelf.title}
         </h2>
         <div class="cards">${cards}</div>
       </section>`;
@@ -145,8 +165,8 @@ function openStickerBook() {
   const owned = progress.stickers;
   const nextAt = (owned.length + 1) * 3;
   const grid = STICKERS.map((s) => (owned.includes(s)
-    ? `<div class="sticker">${s}</div>`
-    : '<div class="sticker locked">❔</div>')).join('');
+    ? `<div class="sticker">${spr(s, 46) || s}</div>`
+    : `<div class="sticker locked">${spr('icon-question', 30) || '❔'}</div>`)).join('');
   openSheet(`
     <h2>Sticker Book</h2>
     <p class="sub">${owned.length} of ${STICKERS.length} collected —
@@ -331,7 +351,11 @@ function registerServiceWorker() {
 
 /* ──────────────────────────────────── boot ─────────────────────────────── */
 
-function boot() {
+async function boot() {
+  // The sheets are tiny and precached; waiting for them means the home screen
+  // renders 16-bit on first paint instead of flashing emoji.
+  await loadSprites();
+  applySpriteIcons();
   buildHome();
   startMascot();
   armAudio();

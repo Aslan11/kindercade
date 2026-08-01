@@ -113,10 +113,19 @@ Import from `../core/art.js`:
 ```js
 candyRect(ctx, x, y, w, h, r, color, { pressed, glow, stroke })
 candyCircle(ctx, cx, cy, r, color, { gloss, glow })
-drawEmoji(ctx, '🐝', x, y, size, { rotate, alpha, shadow })
+drawEmoji(ctx, 'bee', x, y, size, { rotate, alpha, shadow })  // sprite name or emoji
 bubbleText(ctx, 'Hello', x, y, size, { fill, stroke })
 softText, glassPanel, roundRect, starPath, sparklePath, blobPath, cloudPath
 goldStar, drawPip, drawBackdrop, vGrad, radial, Palette
+```
+
+The 16-bit atlas itself lives in `../core/sprites.js`:
+
+```js
+drawSprite(ctx, 'balloon-pink', x, y, size, { rotate, alpha, shadow })
+hasSprite('cookie-1')      // true once the sheet is decoded
+getSprite('card-back-tile') // { img, x, y, w, h } source rect, or null
+loadScene('fox')            // Promise<Image|null> — jigsaw scene paintings
 ```
 
 `drawBackground(ctx)` paints the shared sky by default. Override it for a
@@ -134,7 +143,12 @@ this.fx.floatText(x, y, '+1')  this.fx.addShake(6)
 
 ## Rules for this arcade
 
-1. **No downloaded assets.** Everything is drawn or is a colour-emoji glyph.
+1. **All pictorial art comes from the sprite atlas** (`assets/sprites/`, see
+   `src/core/sprites.js`). `drawEmoji` accepts a sprite name (`'fox'`,
+   `'icon-home'`) or a legacy emoji character — both resolve to 16-bit pixel
+   art, with the emoji glyph as a fallback while sheets load. New sprites must
+   be added to the atlas sheets, the manifest, and the service-worker precache;
+   never hotlink external assets.
 2. **Nothing tappable is smaller than ~96 logical units.** Fingers are blunt.
 3. **Failure is never punishing.** No timers, no lives, no losing. A wrong
    answer gets a warm "try again" and the child may retry immediately.

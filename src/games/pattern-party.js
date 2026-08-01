@@ -13,12 +13,23 @@ import { Button, drawSlot } from '../core/ui.js';
 import { candyRect, roundRect, starPath, heartPath, softText, bubbleText } from '../core/art.js';
 import { Ease } from '../core/anim.js';
 import { shuffle, pick, clamp, sample, TAU, shade } from '../core/util.js';
+import { drawSprite } from '../core/sprites.js';
 import { SHAPES, SHAPE_COLORS, PRAISE } from '../data/words.js';
 
 const RULES = {
   1: [[0, 1], [0, 0, 1]],
   2: [[0, 1, 2], [0, 0, 1, 1], [0, 1, 1]],
   3: [[0, 1, 1], [0, 1, 2, 2], [0, 1, 2, 0]],
+};
+
+// The atlas names its shape sprites `<shape>-<colour>`, and its colour names sit
+// in the same order as SHAPE_COLORS — so the hex a token carries is a lookup by
+// index rather than a second table to keep in step.
+const ATLAS_COLORS = ['pink', 'gold', 'sky', 'mint', 'purple', 'orange'];
+
+const shapeSprite = (shape, hex) => {
+  const i = SHAPE_COLORS.indexOf(hex);
+  return i < 0 ? null : `${shape}-${ATLAS_COLORS[i]}`;
 };
 
 export default class PatternParty extends Game {
@@ -278,8 +289,9 @@ export default class PatternParty extends Game {
   }
 
   /**
-   * Tokens are drawn as vector shapes on a candy tile — crisp at any size, and
-   * distinguishable by shape as well as colour (colour alone is a poor signal).
+   * Tokens are drawn as atlas shapes on a candy tile — distinguishable by shape
+   * as well as colour (colour alone is a poor signal), with the vector paths
+   * standing in until the sheet loads.
    */
   drawToken(ctx, token, x, y, size, tile = true) {
     if (tile) {
@@ -307,6 +319,12 @@ export default class PatternParty extends Game {
   }
 
   drawShape(ctx, shape, color, cx, cy, r) {
+    // The atlas carries all six shapes in all six palette colours. Its cells have
+    // a little padding, so the sprite draws a touch over the vector's 2r span —
+    // and falls through to the paths below until the sheet has loaded.
+    const key = shapeSprite(shape, color);
+    if (key && drawSprite(ctx, key, cx, cy, r * 2.2)) return;
+
     ctx.save();
     ctx.beginPath();
     switch (shape) {

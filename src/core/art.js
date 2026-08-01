@@ -1,13 +1,15 @@
 /**
  * The Kindercade art kit.
  *
- * Everything drawn in this arcade is generated at runtime: vector shapes with
- * real gradients, soft shadows and rim light, plus colour-emoji glyphs baked into
- * cached offscreen canvases. Nothing is downloaded, so art is always crisp on a
- * Retina iPad and the whole app stays a few hundred kilobytes.
+ * Structural art (buttons, panels, backdrops, text) is generated at runtime:
+ * vector shapes with real gradients, soft shadows and rim light. Pictorial art
+ * (creatures, objects, icons, Pip) comes from the 16-bit sprite atlas in
+ * assets/sprites/ — see sprites.js. Emoji glyphs remain only as a fallback for
+ * anything the atlas cannot draw yet.
  */
 
 import { TAU, hashNoise, withAlpha, shade, clamp, lerp } from './util.js';
+import { drawSprite, getSprite } from './sprites.js';
 
 /* ------------------------------------------------------------------ typography */
 
@@ -41,9 +43,9 @@ export const Palette = {
 
 /** Per-subject accent colours; the shell and games both read these. */
 export const Subjects = {
-  math: { name: 'Numbers', color: '#ff8a4c', color2: '#ffc93c', emoji: '🔢' },
-  spelling: { name: 'Words', color: '#4cc9f0', color2: '#7b8cff', emoji: '🔤' },
-  puzzle: { name: 'Puzzles', color: '#9b6cff', color2: '#ff8fd0', emoji: '🧩' },
+  math: { name: 'Numbers', color: '#ff8a4c', color2: '#ffc93c', emoji: 'icon-numbers' },
+  spelling: { name: 'Words', color: '#4cc9f0', color2: '#7b8cff', emoji: 'icon-words' },
+  puzzle: { name: 'Puzzles', color: '#9b6cff', color2: '#ff8fd0', emoji: 'icon-puzzles' },
 };
 
 /* ------------------------------------------------------------------ path shapes */
@@ -296,8 +298,15 @@ export function emojiSprite(ch, size, dpr = window.devicePixelRatio || 1) {
   return cv;
 }
 
-/** Draw an emoji centred on (x, y) at the given pixel size. */
+/**
+ * Draw a picture centred on (x, y) at the given pixel size.
+ *
+ * `ch` may be a sprite name ("fox", "icon-home") or an emoji character — the
+ * atlas resolves either. If the sprite sheets have not loaded (or the key is
+ * unknown), the original emoji-glyph path keeps everything on screen.
+ */
 export function drawEmoji(ctx, ch, x, y, size, { rotate = 0, alpha = 1, shadow = false } = {}) {
+  if (drawSprite(ctx, ch, x, y, size, { rotate, alpha, shadow })) return;
   const sp = emojiSprite(ch, size);
   ctx.save();
   ctx.globalAlpha *= alpha;
@@ -399,15 +408,43 @@ export function glassPanel(ctx, x, y, w, h, r = 28, { alpha = 0.86, tint = '#fff
 /* -------------------------------------------------------------------- mascot */
 
 /**
- * Pip — the little fox who hosts the arcade. Fully vector so it stays sharp,
- * animates, and can react (cheer / think / oops) without any sprite sheets.
+ * Pip — the little fox who hosts the arcade, drawn from the 16-bit pose sheet
+ * (pip.png: happy / cheer / think / oops / blink / wave). Idle life comes from
+ * code: breathing, a cheer bounce, blinking and the occasional wave. Falls
+ * back to the original vector fox if the sheet has not loaded.
  *
  * @param {object} o
  * @param {number} o.t      time in seconds (drives idle breathing + blinking)
  * @param {string} o.mood   'happy' | 'cheer' | 'think' | 'oops'
- * @param {number} o.look   -1..1 horizontal gaze
+ * @param {number} o.look   -1..1 horizontal gaze (vector fallback only)
  */
 export function drawPip(ctx, x, y, size, { t = 0, mood = 'happy', look = 0 } = {}) {
+  if (getSprite('pip-happy')) {
+    const s = size / 100;
+    const breathe = Math.sin(t * 2.1) * 0.02 + 1;
+    const bounce = mood === 'cheer' ? Math.abs(Math.sin(t * 7)) * 10 * s : 0;
+    const blinkPhase = (t % 3.7) / 3.7;
+
+    let pose = `pip-${mood}`;
+    if (mood === 'happy') {
+      if ((t % 9) < 1.2) pose = 'pip-wave';               // a periodic hello
+      else if (blinkPhase > 0.955) pose = 'pip-blink';
+    }
+    if (!getSprite(pose)) pose = 'pip-happy';
+
+    ctx.save();
+    ctx.translate(x, y - bounce);
+    ctx.scale(1, breathe);
+    // The vector fox spanned y −108 (ears) … +190 (shadow) at s=1; place the
+    // sprite over the same footprint so existing call sites stay put.
+    drawSprite(ctx, pose, 0, 41 * s, 298 * s);
+    ctx.restore();
+    return;
+  }
+  drawPipVector(ctx, x, y, size, { t, mood, look });
+}
+
+function drawPipVector(ctx, x, y, size, { t = 0, mood = 'happy', look = 0 } = {}) {
   const s = size / 100;
   const breathe = Math.sin(t * 2.1) * 0.02 + 1;
   const bounce = mood === 'cheer' ? Math.abs(Math.sin(t * 7)) * 10 * s : 0;
@@ -583,6 +620,17 @@ export function progressPips(ctx, x, y, total, done, { r = 11, gap = 30, color =
 
 /** A gold star with a soft glow — the universal "you did it" token. */
 export function goldStar(ctx, cx, cy, r, { glow = 1, rot = 0, filled = true } = {}) {
+  const key = filled ? 'gold-star-big' : 'gold-star-empty';
+  if (getSprite(key)) {
+    ctx.save();
+    if (filled && glow > 0) {
+      ctx.shadowColor = `rgba(255,201,60,${0.9 * glow})`;
+      ctx.shadowBlur = r * 1.1 * glow;
+    }
+    drawSprite(ctx, key, cx, cy, r * 2.15, { rotate: rot });
+    ctx.restore();
+    return;
+  }
   ctx.save();
   if (glow > 0) {
     ctx.shadowColor = `rgba(255,201,60,${0.9 * glow})`;

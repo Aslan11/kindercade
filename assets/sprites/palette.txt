@@ -1,0 +1,68 @@
+KINDERCADE MASTER PALETTE
+
+Core (52) — every sprite sheet uses only these:
+ 1. #3a2b23
+ 2. #2e2924
+ 3. #fffdf8
+ 4. #fff3e2
+ 5. #f0dcc0
+ 6. #efeae4
+ 7. #c9c2bb
+ 8. #9a938c
+ 9. #6b625c
+10. #ffd0dc
+11. #ff9ec0
+12. #ff6b8b
+13. #d94c6d
+14. #ff9a8f
+15. #ff5a4d
+16. #c93a30
+17. #ffd0b0
+18. #ffb271
+19. #ff9a52
+20. #f07a35
+21. #c95e1c
+22. #fff3b0
+23. #ffd84c
+24. #ffc93c
+25. #ff9f1c
+26. #e2820f
+27. #d6f0b8
+28. #a8e06b
+29. #8fd45e
+30. #6fc24a
+31. #4f8f2e
+32. #2f6b1e
+33. #dff5ff
+34. #8fe0fa
+35. #4cc9f0
+36. #2ba3c9
+37. #1a6f96
+38. #3ddc97
+39. #23b076
+40. #c9a8ff
+41. #9b6cff
+42. #7448d6
+43. #e0a55e
+44. #c98f4c
+45. #a8703f
+46. #7c4e28
+47. #c9d4e0
+48. #93a4bd
+49. #5e6b80
+50. #2e2a4a
+51. #5b4a8f
+52. #ffc0a8
+
+Atmosphere (8) — scene skies, water and sand only:
+53. #7fd4f0
+54. #b8e8f5
+55. #ffd9b3
+56. #ffd0e0
+57. #2b4fa8
+58. #e8d4a8
+59. #c9ab74
+60. #d9b47a
+
+Outline is always #3a2b23. Light source top-left on everything.
+No anti-aliasing; gradients are 4x4 Bayer dithered. Scale nearest-neighbour only.

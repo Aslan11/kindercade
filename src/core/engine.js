@@ -240,11 +240,11 @@ export class Game {
   _buildHud() {
     this.hud.clear();
     this.backBtn = this.hud.add(new Button({
-      x: 76, y: 76, circle: true, radius: 46, emoji: '🏠', color: '#ff8fa8',
+      x: 76, y: 76, circle: true, radius: 46, emoji: 'icon-home', color: '#ff8fa8',
       onTap: () => { this.audio.tap(); this.exit(); },
     }));
     this.speakBtn = this.hud.add(new Button({
-      x: 200, y: 76, circle: true, radius: 42, emoji: '🔊', color: '#7fd1ff',
+      x: 200, y: 76, circle: true, radius: 42, emoji: 'icon-speaker', color: '#7fd1ff',
       onTap: () => this.replayPrompt(),
     }));
   }

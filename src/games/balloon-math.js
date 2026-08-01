@@ -9,10 +9,18 @@
 
 import { Game } from '../core/engine.js';
 import { drawEmoji, bubbleText, glassPanel, candyCircle, softText, Palette } from '../core/art.js';
-import { randInt, shuffle, pick, dist, clamp, rand, TAU, shade } from '../core/util.js';
+import { drawSprite, hasSprite } from '../core/sprites.js';
+import { randInt, shuffle, pick, dist, clamp, rand, TAU, shade, withAlpha } from '../core/util.js';
 import { COUNTABLES, numberWord, PRAISE } from '../data/words.js';
 
 const BALLOON_COLORS = ['#ff6b8b', '#ffc93c', '#4cc9f0', '#3ddc97', '#9b6cff', '#ff8fd0', '#ff9f1c'];
+// One atlas balloon per colour, same order — seven colours, seven sprites, so
+// every lane still gets a balloon nobody else is wearing. The colour is kept
+// even when the sprite draws, because rings and confetti tint from it.
+const BALLOON_SPRITES = [
+  'balloon-pink', 'balloon-gold', 'balloon-sky', 'balloon-mint',
+  'balloon-purple', 'balloon-red', 'balloon-orange',
+];
 
 export default class BalloonMath extends Game {
   static meta = {
@@ -101,6 +109,7 @@ export default class BalloonMath extends Game {
       bobAmp: rand(9, 16),
       swayAmp: rand(10, 20),
       color: BALLOON_COLORS[i % BALLOON_COLORS.length],
+      sprite: BALLOON_SPRITES[i % BALLOON_SPRITES.length],
       popped: false,
       glow: 0,
       pulse: 0,
@@ -170,7 +179,7 @@ export default class BalloonMath extends Game {
     this.roundsDone++;
     this.audio.pop();
     this.fx.ring(b.x, b.y, { color: b.color, r1: b.r * 2.6, life: 0.5, width: 14 });
-    this.fx.burstEmoji(b.x, b.y, '🎉', 6, 30);
+    this.fx.burstEmoji(b.x, b.y, 'icon-party', 6, 30);
     this.fx.confetti(b.x, b.y, 34);
     this.fx.floatText(b.x, b.y - b.r, `${this.sum.answer}!`, { color: '#fff3b0' });
     this.audio.correct();
@@ -260,9 +269,14 @@ export default class BalloonMath extends Game {
     }
   }
 
-  /** Drawn rather than an emoji, so the numeral can sit legibly on the body. */
+  /**
+   * The atlas balloon carries its own body and tie-knot; the string stays code
+   * so it can sway. Without the sheet loaded the hand-drawn balloon takes over,
+   * and either way the numeral is painted last so it stays the readable part.
+   */
   drawBalloon(ctx, b) {
     const wob = Math.sin(this.t * 2.2 + b.phase) * 0.05;
+    const sprite = hasSprite(b.sprite);
     ctx.save();
     ctx.translate(b.x, b.y);
     ctx.rotate(wob);
@@ -272,30 +286,48 @@ export default class BalloonMath extends Game {
       ctx.scale(s, s);
     }
 
-    // string
+    // string — same lazy curve either way, hung from wherever the knot ends up
+    // (the sprite's knot reaches lower than the drawn triangle did).
+    const knotY = b.r * (sprite ? 1.42 : 0.98);
     ctx.beginPath();
-    ctx.moveTo(0, b.r * 0.98);
-    ctx.quadraticCurveTo(b.r * 0.3, b.r * 1.5, Math.sin(this.t * 2 + b.phase) * b.r * 0.25, b.r * 2.1);
+    ctx.moveTo(0, knotY);
+    ctx.quadraticCurveTo(b.r * 0.3, knotY + b.r * 0.52,
+      Math.sin(this.t * 2 + b.phase) * b.r * 0.25, knotY + b.r * 1.12);
     ctx.strokeStyle = 'rgba(70,55,90,0.5)';
     ctx.lineWidth = 3;
     ctx.stroke();
 
-    // knot
-    ctx.beginPath();
-    ctx.moveTo(-8, b.r * 0.94);
-    ctx.lineTo(8, b.r * 0.94);
-    ctx.lineTo(0, b.r * 1.12);
-    ctx.closePath();
-    ctx.fillStyle = shade(b.color, -0.28);
-    ctx.fill();
+    if (sprite) {
+      // The cell is 64×96, so height 3r gives a body 2r across — the width the
+      // drawn circle had. The glow lives in the outer shadow: drawSprite's own
+      // save/restore leaves it alone.
+      ctx.save();
+      if (b.glow > 0) {
+        ctx.shadowBlur = 30 * b.glow;
+        ctx.shadowColor = withAlpha(b.color, 0.9 * b.glow);
+      }
+      drawSprite(ctx, b.sprite, 0, 0, b.r * 3);
+      ctx.restore();
+    } else {
+      // knot
+      ctx.beginPath();
+      ctx.moveTo(-8, b.r * 0.94);
+      ctx.lineTo(8, b.r * 0.94);
+      ctx.lineTo(0, b.r * 1.12);
+      ctx.closePath();
+      ctx.fillStyle = shade(b.color, -0.28);
+      ctx.fill();
 
-    // body: slightly taller than wide, like a real balloon
-    ctx.save();
-    ctx.scale(1, 1.1);
-    candyCircle(ctx, 0, 0, b.r, b.color, { glow: b.glow, stroke: 'rgba(255,255,255,0.5)', strokeWidth: 3 });
-    ctx.restore();
+      // body: slightly taller than wide, like a real balloon
+      ctx.save();
+      ctx.scale(1, 1.1);
+      candyCircle(ctx, 0, 0, b.r, b.color, { glow: b.glow, stroke: 'rgba(255,255,255,0.5)', strokeWidth: 3 });
+      ctx.restore();
+    }
 
-    bubbleText(ctx, String(b.value), 0, 0, b.r * 0.92, {
+    // The sprite's knot takes up the bottom of the cell, so its body centre —
+    // where the numeral belongs — sits a touch above the balloon's own centre.
+    bubbleText(ctx, String(b.value), 0, sprite ? -b.r * 0.22 : 0, b.r * 0.92, {
       fill: '#ffffff', stroke: shade(b.color, -0.45), lineWidth: b.r * 0.14,
     });
     ctx.restore();

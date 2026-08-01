@@ -103,7 +103,10 @@ const server = await start(PORT);
 const base = `http://127.0.0.1:${PORT}/`;
 if (WRITE_SHOTS) mkdirSync(SHOT_DIR, { recursive: true });
 
-const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
+const browser = await chromium.launch({
+  executablePath: process.env.CHROMIUM_PATH || undefined,
+  args: ['--autoplay-policy=no-user-gesture-required'],
+});
 const context = await browser.newContext({
   viewport: { width: 1180, height: 820 }, deviceScaleFactor: 2, hasTouch: true, locale: 'en-US',
 });
