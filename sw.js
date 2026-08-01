@@ -7,7 +7,7 @@
  * deploy is picked up on the next launch.
  */
 
-const VERSION = 'kindercade-v2';
+const VERSION = 'kindercade-v3';
 const CORE = [
   './',
   'index.html',
@@ -25,6 +25,7 @@ const CORE = [
   'src/core/util.js',
   'src/core/progress.js',
   'src/data/words.js',
+  'src/data/strokes.js',
   'src/games/index.js',
   'src/games/counting-critters.js',
   'src/games/balloon-math.js',

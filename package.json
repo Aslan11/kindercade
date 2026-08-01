@@ -10,7 +10,8 @@
     "icons": "node tools/make-icons.mjs",
     "smoke": "node tools/smoke.mjs",
     "playthrough": "node tools/playthrough.mjs",
-    "test": "node tools/check.mjs && node tools/smoke.mjs && node tools/playthrough.mjs"
+    "trace-check": "node tools/trace-check.mjs",
+    "test": "node tools/check.mjs && node tools/smoke.mjs && node tools/playthrough.mjs && node tools/trace-check.mjs"
   },
   "engines": {
     "node": ">=20"
