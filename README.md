@@ -23,7 +23,7 @@ a sticker book.
 |---|---|
 | **Sound Safari** | Phonemic awareness: hearing the first (and later the last) sound in a word and matching it to a letter. |
 | **Word Builder** | Spelling 3–5 letter words by dragging letters into place, with a hint always one tap away. |
-| **Letter Trace** | Letter formation — tracing letters, lowercase and digits with a finger. |
+| **Letter Trace** | Letter formation — writing capitals, small letters and digits one stroke at a time, in the order and direction a teacher would teach. |
 
 ### 🧩 Puzzles
 
@@ -76,15 +76,17 @@ npm start            # http://localhost:8080 — plain static server, same as Pa
 npm run check        # parse + contract checks (this is what CI runs)
 npm run smoke        # boots every game in Chromium; fails on blank or frozen screens
 npm run playthrough  # plays all nine games to the results screen and checks scoring
-npm test             # all three
+npm run trace-check  # traces all 62 letter shapes, and tries to cheat at each
+npm test             # all four
 npm run icons        # regenerate the app icons from tools/make-icons.mjs
 ```
 
 There is no build step. What is in the repository is what the browser runs.
 
-`check` is dependency-free and runs in CI. `smoke` and `playthrough` drive a real
-Chromium via Playwright, so they run locally where a browser is available. Add
-`SHOTS=1` to either to write screenshots to `.smoke/`.
+`check` is dependency-free and runs in CI. `smoke`, `playthrough` and
+`trace-check` drive a real Chromium via Playwright, so they run locally where a
+browser is available. Add `SHOTS=1` to the first two to write screenshots to
+`.smoke/`.
 
 ## Deploying
 
@@ -125,5 +127,5 @@ src/app.js            router + home screen
 src/core/             engine, art kit, audio, input, effects, UI, progress
 src/data/words.js     picture-word list, phonics and number data
 src/games/            one module per game + the registry
-tools/                static server, checks, smoke test, icon generator
+tools/                static server, checks, browser tests, icon generator
 ```
