@@ -7,7 +7,7 @@
  * deploy is picked up on the next launch.
  */
 
-const VERSION = 'kindercade-v3';
+const VERSION = 'kindercade-v4';
 const CORE = [
   './',
   'index.html',
