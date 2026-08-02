@@ -88,12 +88,19 @@ export default class WordBuilder extends Game {
     this.tweens.after(0.3, () => this.speakPrompt());
   }
 
-  /** The word is *heard*, never shown — that is the whole exercise. */
+  /**
+   * The word is *heard*, never shown — that is the whole exercise.
+   *
+   * Queued rather than interrupting: a new round begins while the last round's
+   * praise is still in the air, and cutting it off mid-word ("Fanta— nut!")
+   * sounds like the voice tripping over itself. The 🔊 replay button stops
+   * speech itself before calling this, so a deliberate repeat is still instant.
+   */
   speakPrompt({ delay = 0 } = {}) {
     return this.audio.say([
       { text: this.entry.word, rate: 0.7, gap: 0.35, delay },
       { text: `Can you spell ${this.entry.word}?`, rate: 0.9 },
-    ]);
+    ], { interrupt: false });
   }
 
   /** Visual only — bounce the picture and jiggle the tray. */
@@ -123,11 +130,15 @@ export default class WordBuilder extends Game {
       if (s.tile) { s.tile.x = s.x + s.w / 2; s.tile.y = s.y + s.h / 2; }
     });
 
-    // Tray
+    // Tray. The hint button owns the bottom-right corner (centre W−96,
+    // radius 52), and the tray shares its height band — so the tray is kept
+    // clear of both corners, or the very letter the child is hunting can sit
+    // hidden underneath the bulb.
     const loose = this.tiles.filter((t) => t.slot < 0);
-    this.tileSize = clamp(Math.min((this.W * 0.86) / Math.max(4, this.tiles.length) - 16, 118), 96, 118);
+    const avail = this.W - 2 * 168;
+    this.tileSize = clamp(Math.min(avail / Math.max(4, this.tiles.length) - 16, 118), 96, 118);
     const trayY = this.H - this.tileSize * 0.86;
-    const spread = Math.min(this.W * 0.86, loose.length * (this.tileSize + 16));
+    const spread = Math.min(avail - this.tileSize, loose.length * (this.tileSize + 16));
     loose.forEach((t, i) => {
       const k = loose.length === 1 ? 0.5 : i / (loose.length - 1);
       t.homeX = this.cx - spread / 2 + k * spread;
@@ -239,7 +250,9 @@ export default class WordBuilder extends Game {
       // These timers only run while this game is running, so a child who leaves
       // mid-celebration never gets dragged into another round.
       if (this.finished) return;
-      this.audio.speak(pick(PRAISE));
+      // Queued, not interrupting: on a slow voice the spell-out can outlast
+      // afterSpeech's cap, and praise must not cut its last letters off.
+      this.audio.speak(pick(PRAISE), { interrupt: false });
       if (this.roundsDone >= this.roundsTotal) this.finishRound({ title: pick(PRAISE) });
       else this.newRound();
     });

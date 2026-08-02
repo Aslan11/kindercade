@@ -181,11 +181,22 @@ export const LETTER_NAME = {
   x: 'ex', y: 'why', z: 'zee',
 };
 
+/**
+ * How each letter *sounds*, for phonics prompts.
+ *
+ * These must be strings a speech engine can actually pronounce. The honest
+ * phonemes for the continuants ("fff", "sss", "rrr") read to a TTS engine as
+ * initialisms, and it spells them out — "sss" comes back as "ess ess ess",
+ * which is worse than useless to a child listening for a sound. So every
+ * consonant is anchored on a schwa the way the stops already were ("buh",
+ * "tuh"): not textbook phonics, but the same sound a teacher makes when a
+ * pure phone is unavailable — and every engine says it as one syllable.
+ */
 export const LETTER_SOUND = {
-  a: 'ah', b: 'buh', c: 'kuh', d: 'duh', e: 'eh', f: 'fff', g: 'guh', h: 'huh',
-  i: 'ih', j: 'juh', k: 'kuh', l: 'lll', m: 'mmm', n: 'nnn', o: 'ah', p: 'puh',
-  q: 'kwuh', r: 'rrr', s: 'sss', t: 'tuh', u: 'uh', v: 'vvv', w: 'wuh',
-  x: 'ks', y: 'yuh', z: 'zzz',
+  a: 'ah', b: 'buh', c: 'kuh', d: 'duh', e: 'eh', f: 'fuh', g: 'guh', h: 'huh',
+  i: 'ih', j: 'juh', k: 'kuh', l: 'luh', m: 'muh', n: 'nuh', o: 'ah', p: 'puh',
+  q: 'kwuh', r: 'ruh', s: 'suh', t: 'tuh', u: 'uh', v: 'vuh', w: 'wuh',
+  x: 'ecks', y: 'yuh', z: 'zuh',
 };
 
 /** Number words 0–20, plus the tens, for the arithmetic games' voice-over. */
