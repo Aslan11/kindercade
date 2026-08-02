@@ -13,8 +13,11 @@
 
 import { Game } from '../core/engine.js';
 import { Button } from '../core/ui.js';
-import { softText, drawEmoji, glassPanel, Palette, roundRect, font } from '../core/art.js';
-import { shuffle, pick, clamp, TAU, dist, mixHex } from '../core/util.js';
+import {
+  softText, drawEmoji, glassPanel, Palette, font,
+  PX, px, stepAlpha, pixelRect, pixelCircle, pixelPolyline,
+} from '../core/art.js';
+import { shuffle, pick, clamp, dist, mixHex } from '../core/util.js';
 import { WORDS, numberWord, PRAISE } from '../data/words.js';
 import { strokesFor, MID, DESC } from '../data/strokes.js';
 
@@ -363,27 +366,18 @@ export default class LetterTrace extends Game {
 
     const width = this.unit * 0.19;
     // The letter to aim at, sitting under everything like a pencil guide.
-    ctx.save();
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = width;
-    ctx.strokeStyle = 'rgba(0,140,130,0.14)';
-    ctx.fillStyle = 'rgba(0,140,130,0.14)';
-    this.paths.forEach((path) => this.tracePath(ctx, path, path.pts.length - 1));
-    ctx.restore();
+    // A flat opaque tint rather than a translucent stroke: the crayon band is
+    // stamped from overlapping texel squares, and alpha would stack into
+    // blotches wherever the stamps meet.
+    const guide = mixHex('#ffffff', '#008c82', 0.16);
+    this.paths.forEach((path) => this.tracePath(ctx, path, path.pts.length - 1, width, guide));
 
     // Ink: every stroke already written, plus how far along the current one is.
-    ctx.save();
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = width;
     this.paths.forEach((path, i) => {
       const upto = path.done ? path.pts.length - 1 : i === this.strokeIndex ? this.tip : -1;
       if (upto < 0) return;
-      ctx.strokeStyle = ctx.fillStyle = this.crayonColor(i);
-      this.tracePath(ctx, path, upto);
+      this.tracePath(ctx, path, upto, width, this.crayonColor(i));
     });
-    ctx.restore();
 
     if (this.busy) {
       this.drawFinished(ctx);
@@ -396,47 +390,49 @@ export default class LetterTrace extends Game {
   /** Handwriting paper: the lines are the point, so they are drawn properly. */
   drawPaper(ctx) {
     const b = this.box;
-    const x0 = b.x - 12;
-    const x1 = b.x + b.w + 12;
+    const x0 = px(b.x - 12);
+    const x1 = px(b.x + b.w + 12);
+    // One-texel rules; the dashed ones are texel runs, never a setLineDash
+    // stroke (which anti-aliases and reads modern).
     const line = (y, style, dash) => {
-      ctx.save();
-      ctx.setLineDash(dash);
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = style;
-      ctx.beginPath();
-      ctx.moveTo(x0, y);
-      ctx.lineTo(x1, y);
-      ctx.stroke();
-      ctx.restore();
+      const yy = px(y);
+      ctx.fillStyle = style;
+      if (!dash) { ctx.fillRect(x0, yy, x1 - x0, PX); return; }
+      const [on, off] = dash;
+      for (let x = x0; x < x1; x += on + off) ctx.fillRect(x, yy, Math.min(on, x1 - x), PX);
     };
-    line(this.baseY - this.unit, 'rgba(44,35,64,0.18)', []);
-    line(this.baseY - this.unit * (1 - MID), 'rgba(44,35,64,0.16)', [12, 14]);
-    line(this.baseY, 'rgba(255,120,140,0.5)', []);
-    line(this.baseY + this.unit * (DESC - 1), 'rgba(44,35,64,0.1)', [4, 12]);
+    line(this.baseY - this.unit, 'rgba(44,35,64,0.18)', null);
+    line(this.baseY - this.unit * (1 - MID), 'rgba(44,35,64,0.16)', [PX * 3, PX * 3]);
+    line(this.baseY, 'rgba(255,120,140,0.5)', null);
+    line(this.baseY + this.unit * (DESC - 1), 'rgba(44,35,64,0.1)', [PX, PX * 3]);
   }
 
-  /** Stroke (or dot) a path up to a given point index. */
-  tracePath(ctx, path, upto) {
+  /**
+   * Paint (or dot) a path up to a given point index: a crayon band built from
+   * texel-snapped square stamps, one per resampled point. The points sit STEP
+   * apart and the stamp is far wider, so the band is solid with hard stepped
+   * edges — a fat pixel crayon. `color` must be opaque (stamps overlap).
+   */
+  tracePath(ctx, path, upto, w, color) {
     const pts = path.pts;
-    if (path.dot) {
-      if (upto < 0) return;
-      ctx.beginPath();
-      ctx.arc(pts[0].x, pts[0].y, ctx.lineWidth / 2, 0, TAU);
-      ctx.fill();
+    if (upto < 0) return;
+    const s = Math.max(PX * 2, px(w));
+    if (path.dot || upto === 0) {
+      pixelCircle(ctx, pts[0].x, pts[0].y, s / 2, { fill: color });
       return;
     }
-    if (upto < 1) {
-      if (upto === 0) {
-        ctx.beginPath();
-        ctx.arc(pts[0].x, pts[0].y, ctx.lineWidth / 2, 0, TAU);
-        ctx.fill();
-      }
-      return;
+    const half = s / 2;
+    ctx.fillStyle = color;
+    let lx = null;
+    let ly = null;
+    for (let i = 0; i <= upto; i++) {
+      const sx = px(pts[i].x - half);
+      const sy = px(pts[i].y - half);
+      if (sx === lx && sy === ly) continue;
+      ctx.fillRect(sx, sy, s, s);
+      lx = sx;
+      ly = sy;
     }
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i <= upto; i++) ctx.lineTo(pts[i].x, pts[i].y);
-    ctx.stroke();
   }
 
   /* ------------------------------------------------------------------ hints */
@@ -446,21 +442,16 @@ export default class LetterTrace extends Game {
     if (!path) return;
     const pts = path.pts;
 
-    // The line still to travel, dashed and crawling forwards so the direction
-    // reads even without the arrows.
+    // The road still to travel: pixel dots marching forwards along the path,
+    // one resampled point in three, so the direction reads even without the
+    // arrows. Spaced wider than the stamp so translucency never stacks.
     if (!path.dot && this.tip < pts.length - 1) {
-      ctx.save();
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = 5;
-      ctx.setLineDash([10, 16]);
-      ctx.lineDashOffset = -this.t * 40;
-      ctx.strokeStyle = 'rgba(0,140,130,0.55)';
-      ctx.beginPath();
-      ctx.moveTo(pts[this.tip].x, pts[this.tip].y);
-      for (let i = this.tip + 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-      ctx.stroke();
-      ctx.restore();
+      const shift = Math.floor(this.t * 8) % 3;
+      ctx.fillStyle = 'rgba(0,140,130,0.55)';
+      for (let i = this.tip + 1; i < pts.length; i++) {
+        if ((i + 3 - shift) % 3 !== 0) continue;
+        ctx.fillRect(px(pts[i].x - PX), px(pts[i].y - PX), PX * 2, PX * 2);
+      }
       this.drawArrows(ctx, pts);
     }
 
@@ -468,52 +459,44 @@ export default class LetterTrace extends Game {
     if (this.demo > 0) this.drawDemo(ctx, pts);
   }
 
-  /** Chevrons along the road ahead, pointing the way the crayon must travel. */
+  /**
+   * Chevrons along the road ahead, pointing the way the crayon must travel —
+   * two stamped texel legs, opaque so the wings can overlap at the tip.
+   */
   drawArrows(ctx, pts) {
     const gap = Math.max(6, Math.round(this.reach * 0.75));
-    ctx.save();
-    ctx.strokeStyle = 'rgba(0,140,130,0.75)';
-    ctx.lineWidth = 6;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    const color = mixHex('#ffffff', '#008c82', 0.8);
     for (let i = this.tip + gap; i < pts.length - 1; i += gap) {
       const a = pts[i - 1];
       const b = pts[i];
       const ang = Math.atan2(b.y - a.y, b.x - a.x);
       const r = this.unit * 0.075;
-      ctx.save();
-      ctx.translate(b.x, b.y);
-      ctx.rotate(ang);
-      ctx.beginPath();
-      ctx.moveTo(-r, -r * 0.8);
-      ctx.lineTo(0, 0);
-      ctx.lineTo(-r, r * 0.8);
-      ctx.stroke();
-      ctx.restore();
+      const ux = Math.cos(ang);
+      const uy = Math.sin(ang);
+      pixelPolyline(ctx, [
+        [b.x - ux * r - uy * r * 0.8, b.y - uy * r + ux * r * 0.8],
+        [b.x, b.y],
+        [b.x - ux * r + uy * r * 0.8, b.y - uy * r - ux * r * 0.8],
+      ], { color, width: PX * 2 });
     }
-    ctx.restore();
   }
 
   /** Where to put the crayon down, numbered so the order is visible at a glance. */
   drawStartDot(ctx, pts) {
     if (this.drawing) return;
     const p = pts[this.tip];
+    // The pulse breathes in whole texels — pixelCircle snaps the radius, so
+    // the dot grows in visible steps instead of swelling smoothly.
     const pulse = 1 + Math.sin(this.t * 4) * 0.14;
     const r = this.unit * 0.075 * pulse;
     ctx.save();
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, r, 0, TAU);
-    ctx.fillStyle = '#3ddc84';
-    ctx.fill();
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = '#fff';
-    ctx.stroke();
+    pixelCircle(ctx, p.x, p.y, r + PX, { fill: '#3ddc84', outline: '#ffffff' });
     if (this.paths.length > 1) {
       ctx.fillStyle = '#0d3b23';
       ctx.font = font(Math.round(r * 1.1), 900);
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(String(this.strokeIndex + 1), p.x, p.y + 1);
+      ctx.fillText(String(this.strokeIndex + 1), px(p.x), px(p.y) + 1);
     }
     ctx.restore();
     if (this.tip === 0 && this.strokeIndex === 0) {
@@ -526,25 +509,23 @@ export default class LetterTrace extends Game {
     const f = 1 - this.demo;
     const i = clamp(Math.round(f * (pts.length - 1)), 0, pts.length - 1);
     const p = pts[i];
+    const w = this.unit * 0.19;
+    const alpha = stepAlpha(clamp(this.demo * 3, 0, 1));
+    if (alpha <= 0) return;
     ctx.save();
-    ctx.globalAlpha = clamp(this.demo * 3, 0, 1);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = this.unit * 0.19;
-    ctx.strokeStyle = 'rgba(91,140,255,0.28)';
-    if (i >= 1) {
-      ctx.beginPath();
-      ctx.moveTo(pts[0].x, pts[0].y);
-      for (let k = 1; k <= i; k++) ctx.lineTo(pts[k].x, pts[k].y);
-      ctx.stroke();
+    // While fully visible the ghost trail is a solid stamped band in a flat
+    // tint (stamps overlap, so no alpha). On the way out it dissolves into
+    // spaced texel dots, which can fade uniformly without stacking.
+    const ghost = mixHex('#ffffff', '#5b8cff', 0.3);
+    if (alpha >= 1) {
+      this.tracePath(ctx, { pts, dot: false }, i, w, ghost);
+    } else {
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = ghost;
+      const s = px(w / 2);
+      for (let k = 0; k <= i; k += 2) ctx.fillRect(px(pts[k].x - s / 2), px(pts[k].y - s / 2), s, s);
     }
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, this.unit * 0.06, 0, TAU);
-    ctx.fillStyle = '#5b8cff';
-    ctx.fill();
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = '#fff';
-    ctx.stroke();
+    pixelCircle(ctx, p.x, p.y, this.unit * 0.06 + PX, { fill: '#5b8cff', outline: '#ffffff' });
     ctx.restore();
   }
 
@@ -570,14 +551,11 @@ export default class LetterTrace extends Game {
       const done = this.paths[i].done;
       const active = i === this.strokeIndex;
       const r = active ? 17 : 14;
-      roundRect(ctx, x - r, y - r, r * 2, r * 2, r * 0.5);
-      ctx.fillStyle = done ? this.crayonColor(i) : active ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.55)';
-      ctx.fill();
-      if (active && !done) {
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = '#3ddc84';
-        ctx.stroke();
-      }
+      pixelRect(ctx, x - r, y - r, r * 2, r * 2, {
+        fill: done ? this.crayonColor(i) : active ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.55)',
+        outline: active && !done ? '#3ddc84' : null,
+        chamfer: PX,
+      });
       softText(ctx, String(i + 1), x, y + 1, 20, { color: done ? '#ffffff' : Palette.inkSoft });
     }
   }
