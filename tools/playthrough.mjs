@@ -112,8 +112,11 @@ const server = await start(PORT);
 const base = `http://127.0.0.1:${PORT}/`;
 if (WRITE_SHOTS) mkdirSync(SHOT_DIR, { recursive: true });
 
+// Playwright's downloaded Chromium builds are unsigned, so Santa kills them on
+// launch. Prefer the signed Google Chrome install (channel: 'chrome'); an
+// explicit CHROMIUM_PATH still wins for anyone running elsewhere.
 const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH || undefined,
+  ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : { channel: 'chrome' }),
   args: ['--autoplay-policy=no-user-gesture-required'],
 });
 const context = await browser.newContext({

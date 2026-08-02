@@ -2,7 +2,9 @@
  * The game registry.
  *
  * Each entry is metadata plus a lazy `load()` so the launcher stays instant and
- * a game's code only downloads when it is actually opened.
+ * a game's code only downloads when it is actually opened. `tint` is the card's
+ * flat fill and `tint2` its dithered bottom band (same for the shelf
+ * `color`/`color2` pair) — no gradients anywhere in the 16-bit shell.
  */
 
 export const GAMES = [

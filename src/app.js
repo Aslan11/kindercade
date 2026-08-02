@@ -10,7 +10,7 @@ import { Engine } from './core/engine.js';
 import { audio } from './core/audio.js';
 import { progress, STICKERS } from './core/progress.js';
 import { GAMES, SHELVES, gameById } from './games/index.js';
-import { drawPip } from './core/art.js';
+import { drawPip, px } from './core/art.js';
 import { loadSprites, spriteStyle } from './core/sprites.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -20,6 +20,15 @@ const spr = (key, size) => {
   const style = spriteStyle(key, size);
   return style ? `<i class="spr" style="${style}" aria-hidden="true"></i>` : '';
 };
+
+/**
+ * 8×8 two-colour checkerboard tile as a data URI — the classic 16-bit dither
+ * seam that joins two flat fills where a gradient used to be.
+ */
+const dither = (a, b) =>
+  'data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%278%27 height=%278%27%3E'
+  + `%3Crect width=%278%27 height=%278%27 fill=%27${encodeURIComponent(b)}%27/%3E`
+  + `%3Cpath d=%27M0 0h4v4H0zM4 4h4v4H4z%27 fill=%27${encodeURIComponent(a)}%27/%3E%3C/svg%3E`;
 
 /** Swap the static emoji placeholders (chips, rotate hint…) for sprites. */
 function applySpriteIcons() {
@@ -85,8 +94,10 @@ function buildHome() {
     const games = GAMES.filter((g) => g.subject === shelf.subject);
     const cards = games.map((g) => `
       <button class="card" type="button" data-game="${g.id}"
-              style="background:linear-gradient(150deg, ${g.tint}, ${g.tint2})"
+              style="background-color:${g.tint}"
               aria-label="${g.title}. ${g.skill}">
+        <span class="card-band" aria-hidden="true"
+              style="background-color:${g.tint2};background-image:url(${dither(g.tint, g.tint2)})"></span>
         <span class="card-emoji" aria-hidden="true">${spr(g.emoji, 74) || g.emoji}</span>
         <h3>${g.title}</h3>
         <p>${g.blurb}</p>
@@ -94,7 +105,7 @@ function buildHome() {
       </button>`).join('');
     return `
       <section class="shelf">
-        <h2 class="shelf-head" style="background:linear-gradient(120deg, ${shelf.color}, ${shelf.color2})">
+        <h2 class="shelf-head" style="background:${shelf.color}">
           <span class="ico" aria-hidden="true">${spr(shelf.emoji, 30) || shelf.emoji}</span>${shelf.title}
         </h2>
         <div class="cards">${cards}</div>
@@ -143,7 +154,10 @@ function startMascot() {
     if (el.home.hidden) return;              // no work while a game is running
     const t = (now - t0) / 1000;
     ctx.clearRect(0, 0, size, size);
-    drawPip(ctx, size / 2, size * 0.55, 62, { t, mood: 'happy', look: Math.sin(t * 0.7) });
+    // Gaze steps in quarters and the anchor snaps to the texel grid, so Pip
+    // idles in chunky 16-bit increments instead of shimmering sub-pixel.
+    const look = Math.round(Math.sin(t * 0.7) * 4) / 4;
+    drawPip(ctx, px(size / 2), px(size * 0.55), 62, { t, mood: 'happy', look });
   };
   raf = requestAnimationFrame(frame);
   return () => cancelAnimationFrame(raf);

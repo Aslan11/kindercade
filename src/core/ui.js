@@ -11,6 +11,7 @@ import { Spring } from './anim.js';
 import {
   candyRect, candyCircle, bubbleText, softText, roundRect, glassPanel,
   drawEmoji, goldStar, font, Palette, fitFontSize, starPath,
+  PX, px, stepAlpha, pixelRect, HARD_SHADOW,
 } from './art.js';
 import { hasSprite } from './sprites.js';
 
@@ -63,27 +64,30 @@ export class Button {
 
   draw(ctx) {
     if (this.hidden) return;
-    const s = this.scale.value;
-    const dim = this.enabled ? 1 : 0.45;
+    // Quantize the spring scale so the pixel surface pops through a few
+    // discrete sizes instead of shimmering sub-texel.
+    const s = Math.round(this.scale.value * 24) / 24;
+    const dim = this.enabled ? 1 : 0.5;
     ctx.save();
-    ctx.globalAlpha *= dim;
+    ctx.globalAlpha *= stepAlpha(dim);
     ctx.translate(this.cx, this.cy);
     ctx.scale(s, s);
     ctx.translate(-this.cx, -this.cy);
 
     if (this.circle) {
       const r = this.radius;
-      candyCircle(ctx, this.x, this.y + this.press.value * 5, r, this.color,
+      const po = px(this.press.value * 5);   // press offset snapped to the grid
+      candyCircle(ctx, this.x, this.y + po, r, this.color,
         { stroke: 'rgba(255,255,255,0.85)', strokeWidth: 5, glow: this.glow });
-      if (this.emoji) drawEmoji(ctx, this.emoji, this.x, this.y + this.press.value * 5, r * 1.05);
+      if (this.emoji) drawEmoji(ctx, this.emoji, this.x, this.y + po, r * 1.05);
       else if (this.label) {
-        bubbleText(ctx, this.label, this.x, this.y + this.press.value * 5,
+        bubbleText(ctx, this.label, this.x, this.y + po,
           this.fontSize || r * 0.9, { fill: this.textColor, stroke: shade(this.color, -0.45) });
       }
     } else {
       candyRect(ctx, this.x, this.y, this.w, this.h, this.r, this.color,
         { pressed: this.press.value, stroke: 'rgba(255,255,255,0.8)', strokeWidth: 4, glow: this.glow });
-      const oy = this.press.value * 8;
+      const oy = px(this.press.value * 8);   // matches candyRect's snapped press
       let tx = this.x + this.w / 2;
       let labelW = this.w * 0.8;
       if (this.emoji && this.label) {
@@ -165,25 +169,35 @@ export function speechBubble(ctx, x, y, w, text, { size = 34, tail = 'left', col
   const bx = x - w / 2;
   const by = y - h / 2;
 
-  ctx.shadowColor = 'rgba(44,35,64,0.22)';
-  ctx.shadowBlur = 24;
-  ctx.shadowOffsetY = 8;
+  const tailPath = () => {
+    const dir = tail === 'left' ? -1 : 1;
+    ctx.beginPath();
+    ctx.moveTo(px(x + dir * (w / 2 - 6)), px(y + h * 0.12));
+    ctx.lineTo(px(x + dir * (w / 2 + 26)), px(y + h * 0.30));
+    ctx.lineTo(px(x + dir * (w / 2 - 18)), px(y + h * 0.36));
+    ctx.closePath();
+  };
+
+  // Outline pass: fat ink strokes, cast once with a hard offset shadow — the
+  // final colour fills cover the inner half, leaving a crisp 1-texel outline
+  // over a flat silhouette shadow two texels down. No blur anywhere.
+  ctx.shadowColor = HARD_SHADOW;
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = PX * 2;
+  ctx.lineWidth = PX * 2;
+  ctx.lineJoin = 'miter';
+  ctx.strokeStyle = 'rgba(44,35,64,0.4)';
+  if (tail !== 'none') { tailPath(); ctx.stroke(); }
   roundRect(ctx, bx, by, w, h, 30);
-  ctx.fillStyle = color;
-  ctx.fill();
+  ctx.stroke();
   ctx.shadowBlur = 0;
   ctx.shadowOffsetY = 0;
 
-  if (tail !== 'none') {
-    const dir = tail === 'left' ? -1 : 1;
-    ctx.beginPath();
-    ctx.moveTo(x + dir * (w / 2 - 6), y + h * 0.12);
-    ctx.lineTo(x + dir * (w / 2 + 26), y + h * 0.30);
-    ctx.lineTo(x + dir * (w / 2 - 18), y + h * 0.36);
-    ctx.closePath();
-    ctx.fillStyle = color;
-    ctx.fill();
-  }
+  // Fill pass: tail first, body last so the two join seamlessly.
+  ctx.fillStyle = color;
+  if (tail !== 'none') { tailPath(); ctx.fill(); }
+  roundRect(ctx, bx, by, w, h, 30);
+  ctx.fill();
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -279,11 +293,14 @@ export class ResultsPanel {
   draw(ctx) {
     if (!this.visible) return;
     const { W, H, panel } = this;
-    const k = clamp(this.pop.value, 0, 1.2);
+    // Steppy 16-bit reveal: the pop scale walks through eighth-steps and the
+    // dim overlay fades in quantized increments.
+    const k = Math.round(clamp(this.pop.value, 0, 1.2) * 8) / 8;
     const pivotY = panel.y + panel.h / 2;
     ctx.save();
-    ctx.fillStyle = `rgba(30,22,48,${0.5 * clamp(k, 0, 1)})`;
+    ctx.fillStyle = `rgba(30,22,48,${stepAlpha(0.5 * clamp(k, 0, 1))})`;
     ctx.fillRect(0, 0, W, H);
+    if (k <= 0) { ctx.restore(); return; }
 
     ctx.translate(W / 2, pivotY);
     ctx.scale(k, k);
@@ -318,34 +335,61 @@ export class ResultsPanel {
 
 /* ------------------------------------------------------------------- helpers */
 
-/** Slot outline used by every drag-into-place game. */
-export function drawSlot(ctx, x, y, w, h, { r = 22, active = false, filled = false, color = '#ffffff' } = {}) {
+/**
+ * Slot outline used by every drag-into-place game: a flat texel well ringed by
+ * hard dash runs. A stroked setLineDash border anti-aliases into sub-pixel
+ * fragments on corner diagonals, so the dashes are laid down as fillRect runs
+ * of texels instead — two on, one off, `r` kept only for call-site
+ * compatibility. `fill`/`stroke` override the default white dress when a game
+ * wants the slot in its own tint.
+ */
+export function drawSlot(ctx, x, y, w, h, {
+  r = 22, active = false, filled = false, color = '#ffffff', fill = null, stroke = null,
+} = {}) {
+  void r;
+  const sx = px(x);
+  const sy = px(y);
+  const sw = Math.max(PX * 3, px(w));
+  const sh = Math.max(PX * 3, px(h));
   ctx.save();
-  roundRect(ctx, x, y, w, h, r);
-  ctx.fillStyle = filled ? 'rgba(255,255,255,0.14)' : withAlpha(color === '#ffffff' ? '#ffffff' : color, active ? 0.5 : 0.28);
-  ctx.fill();
-  ctx.setLineDash(filled ? [] : [14, 12]);
-  ctx.lineWidth = active ? 7 : 5;
-  ctx.strokeStyle = active ? '#ffffff' : 'rgba(255,255,255,0.85)';
-  ctx.stroke();
-  ctx.setLineDash([]);
+  ctx.fillStyle = fill
+    ?? (filled ? 'rgba(255,255,255,0.125)' : withAlpha(color === '#ffffff' ? '#ffffff' : color, stepAlpha(active ? 0.5 : 0.25)));
+  ctx.fillRect(sx, sy, sw, sh);
+
+  const t = active ? PX * 2 : PX;
+  ctx.fillStyle = stroke ?? (active ? '#ffffff' : 'rgba(255,255,255,0.85)');
+  if (filled) {
+    // A settled slot closes its ring: solid 1-texel border, no dashes.
+    ctx.fillRect(sx, sy, sw, t);
+    ctx.fillRect(sx, sy + sh - t, sw, t);
+    ctx.fillRect(sx, sy + t, t, sh - t * 2);
+    ctx.fillRect(sx + sw - t, sy + t, t, sh - t * 2);
+  } else {
+    const on = PX * 2;
+    const step = PX * 3;
+    for (let dx = 0; dx < sw; dx += step) {
+      const seg = Math.min(on, sw - dx);
+      ctx.fillRect(sx + dx, sy, seg, t);
+      ctx.fillRect(sx + dx, sy + sh - t, seg, t);
+    }
+    for (let dy = 0; dy < sh; dy += step) {
+      const seg = Math.min(on, sh - dy);
+      ctx.fillRect(sx, sy + dy, t, seg);
+      ctx.fillRect(sx + sw - t, sy + dy, t, seg);
+    }
+  }
   ctx.restore();
 }
 
-/** Small pill label, e.g. "Level 2". */
+/** Small pill label, e.g. "Level 2" — a chamfered pixel chip. */
 export function pill(ctx, x, y, text, { size = 26, color = '#ffffff', textColor = Palette.ink, padX = 22 } = {}) {
   ctx.save();
   ctx.font = font(size, 800);
   const w = ctx.measureText(text).width + padX * 2;
   const h = size * 1.9;
-  roundRect(ctx, x - w / 2, y - h / 2, w, h, h / 2);
-  ctx.fillStyle = color;
-  ctx.shadowColor = 'rgba(44,35,64,0.18)';
-  ctx.shadowBlur = 12;
-  ctx.shadowOffsetY = 4;
-  ctx.fill();
-  ctx.shadowBlur = 0;
-  ctx.shadowOffsetY = 0;
+  pixelRect(ctx, x - w / 2, y - h / 2, w, h, {
+    fill: color, outline: 'rgba(91,79,118,0.5)', chamfer: PX * 2, shadow: true,
+  });
   ctx.fillStyle = textColor;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -354,22 +398,23 @@ export function pill(ctx, x, y, text, { size = 26, color = '#ffffff', textColor 
   return w;
 }
 
-/** Star counter chip for the HUD. */
+/** Star counter chip for the HUD — a chamfered pixel chip. */
 export function starChip(ctx, x, y, count) {
   ctx.save();
   const text = String(count);
   ctx.font = font(30, 900);
   const w = 62 + ctx.measureText(text).width;
-  roundRect(ctx, x - w, y - 27, w, 54, 27);
-  ctx.fillStyle = 'rgba(255,255,255,0.9)';
-  ctx.fill();
+  pixelRect(ctx, x - w, y - 27, w, 54, {
+    fill: 'rgba(255,255,255,0.9)', outline: 'rgba(91,79,118,0.5)', chamfer: PX * 2,
+  });
   if (hasSprite('icon-star')) {
     drawEmoji(ctx, 'icon-star', x - w + 27, y, 36);
   } else {
+    // pre-atlas fallback: flat gold star, flat outline
     starPath(ctx, x - w + 27, y, 17, 8, 5);
     ctx.fillStyle = '#ffc93c';
     ctx.fill();
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = PX;
     ctx.strokeStyle = '#e2820f';
     ctx.stroke();
   }

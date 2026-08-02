@@ -8,7 +8,7 @@
  */
 
 import { Game } from '../core/engine.js';
-import { candyRect, drawEmoji, bubbleText, roundRect, starPath } from '../core/art.js';
+import { candyRect, drawEmoji, bubbleText, roundRect, PX, px } from '../core/art.js';
 import { getSprite } from '../core/sprites.js';
 import { Ease } from '../core/anim.js';
 import { shuffle, pick, clamp, sample, pointInRect, shade } from '../core/util.js';
@@ -199,19 +199,25 @@ export default class MemoryMatch extends Game {
     const squeeze = Math.abs(Math.cos(t * Math.PI));
     const showFace = t > 0.5;
     const pop = 1 + Ease.pulse(card.pop) * 0.14;
-    const cx = card.x + card.w / 2;
-    const cy = card.y + card.h / 2;
+    // The card rect snaps to the texel grid so resting art never sits on a
+    // sub-pixel seam; the squeeze itself is motion and may pass through it.
+    const x = px(card.x);
+    const y = px(card.y);
+    const w = px(card.w);
+    const h = px(card.h);
+    const cx = x + w / 2;
+    const cy = y + h / 2;
 
     ctx.save();
-    ctx.globalAlpha = card.matched ? 0.66 : 1;
+    ctx.globalAlpha = card.matched ? 0.625 : 1;   // an eighth — steppy 16-bit fade
     ctx.translate(cx, cy);
     ctx.scale(Math.max(0.02, squeeze) * pop, pop);
     ctx.translate(-cx, -cy);
 
     if (!showFace) {
-      this.drawBack(ctx, card);
+      this.drawBack(ctx, x, y, w, h);
     } else {
-      candyRect(ctx, card.x, card.y, card.w, card.h, card.w * 0.16, '#ffffff', {
+      candyRect(ctx, x, y, w, h, PX * 2, '#ffffff', {
         depth: 8, gloss: false, stroke: card.matched ? '#3ddc97' : shade(this.tint, 0.4), strokeWidth: 6,
       });
       this.drawFace(ctx, card);
@@ -219,30 +225,35 @@ export default class MemoryMatch extends Game {
     ctx.restore();
   }
 
-  drawBack(ctx, card) {
-    candyRect(ctx, card.x, card.y, card.w, card.h, card.w * 0.16, this.tint, { depth: 8 });
+  drawBack(ctx, x, y, w, h) {
+    candyRect(ctx, x, y, w, h, PX * 2, this.tint, { depth: 8 });
     ctx.save();
-    roundRect(ctx, card.x + 8, card.y + 8, card.w - 16, card.h - 16, card.w * 0.13);
+    roundRect(ctx, x + PX * 2, y + PX * 2, w - PX * 4, h - PX * 4, PX * 2);
     ctx.clip();
     // A little repeating star field on the card backs.
-    const step = card.w * 0.3;
+    const step = w * 0.3;
     const pattern = backTilePattern(ctx);
     if (pattern) {
-      // Fill in a scaled space so one 32px tile lands on `step` on screen.
-      const k = step / backTile.width;
-      ctx.globalAlpha = 0.3;
+      // Fill in a scaled space. The scale is a whole number so every texel of
+      // the 32px tile lands on whole logical pixels and never shimmers.
+      const k = Math.max(1, Math.round(step / backTile.width));
+      ctx.globalAlpha = 0.25;
       ctx.imageSmoothingEnabled = false;
       ctx.scale(k, k);
       ctx.fillStyle = pattern;
-      ctx.fillRect(card.x / k, card.y / k, card.w / k, card.h / k);
+      ctx.fillRect(x / k, y / k, w / k, h / k);
     } else {
-      ctx.globalAlpha = 0.22;
-      for (let y = card.y; y < card.y + card.h + step; y += step) {
-        for (let x = card.x; x < card.x + card.w + step; x += step) {
-          const off = (Math.round((y - card.y) / step) % 2) * step * 0.5;
-          starPath(ctx, x + off, y, step * 0.19, step * 0.085, 5);
-          ctx.fillStyle = '#ffffff';
-          ctx.fill();
+      // Sheets not loaded (or missing) — a sparse grid of pixel plus-shapes.
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = '#ffffff';
+      const stepP = Math.max(px(step), PX * 4);
+      for (let yy = y; yy < y + h + stepP; yy += stepP) {
+        for (let xx = x; xx < x + w + stepP; xx += stepP) {
+          const off = (Math.round((yy - y) / stepP) % 2) * stepP * 0.5;
+          const sx = px(xx + off);
+          const sy = px(yy);
+          ctx.fillRect(sx, sy - PX, PX, PX * 3);
+          ctx.fillRect(sx - PX, sy, PX * 3, PX);
         }
       }
     }

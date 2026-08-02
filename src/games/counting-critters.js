@@ -10,9 +10,9 @@
 
 import { Game } from '../core/engine.js';
 import { Button } from '../core/ui.js';
-import { drawEmoji, bubbleText, glassPanel, candyCircle, softText } from '../core/art.js';
+import { drawEmoji, bubbleText, glassPanel, pixelCircle, softText, PX, px, stepAlpha } from '../core/art.js';
 import { Ease } from '../core/anim.js';
-import { randInt, shuffle, pick, dist, clamp, rand, TAU } from '../core/util.js';
+import { randInt, shuffle, pick, dist, clamp, rand, TAU, shade } from '../core/util.js';
 import { COUNTABLES, numberWord, PRAISE } from '../data/words.js';
 
 const RANGES = { 1: [1, 5], 2: [1, 10], 3: [6, 20] };
@@ -104,7 +104,7 @@ export default class CountingCritters extends Game {
     const ty = this.H * 0.70;
     this.choices.forEach((value, i) => {
       this.buttons.add(new Button({
-        x: startX + i * (tw + gap), y: ty, w: tw, h: 148, r: 34,
+        x: startX + i * (tw + gap), y: ty, w: tw, h: 148, r: PX * 4,
         label: String(value), fontSize: 84, color: this.tint, id: `n${value}`,
         onTap: () => this.answer(value),
       }));
@@ -182,25 +182,32 @@ export default class CountingCritters extends Game {
 
   draw(ctx) {
     const f = this.field;
-    glassPanel(ctx, f.x, f.y, f.w, f.h, 40, { alpha: 0.55 });
+    glassPanel(ctx, f.x, f.y, f.w, f.h, PX * 4, { alpha: 0.55 });
 
     for (const c of this.critters) {
       if (c.gone >= 1) continue;
+      // Bob, shake and the fly-away all snap to the texel grid at draw time,
+      // and the departure fade steps in eighths — no sub-pixel shimmer.
       const bob = Math.sin(this.t * 1.8 + c.phase) * 7;
       const shake = this.wiggle > 0 && !c.counted
         ? Math.sin(this.t * 26 + c.phase) * 6 * this.wiggle : 0;
       const scale = 1 + Ease.pulse(clamp(c.pop, 0, 1)) * 0.32;
-      const y = c.y + bob - c.gone * (f.h + 260);
-      const alpha = 1 - c.gone;
+      const x = px(c.x + shake);
+      const y = px(c.y + bob - c.gone * (f.h + 260));
+      const alpha = stepAlpha(1 - c.gone);
 
       ctx.save();
       ctx.globalAlpha = alpha;
-      drawEmoji(ctx, this.kind.emoji, c.x + shake, y, this.critterSize * scale, { shadow: true });
+      drawEmoji(ctx, this.kind.emoji, x, y, this.critterSize * scale, { shadow: true });
 
       if (c.counted && c.gone < 0.5) {
-        const bx = c.x + shake + this.critterSize * 0.4;
+        const bx = x + this.critterSize * 0.4;
         const by = y - this.critterSize * 0.4;
-        candyCircle(ctx, bx, by, 25, '#3ddc97', { gloss: true });
+        pixelCircle(ctx, bx, by, 25, {
+          fill: '#3ddc97',
+          outline: shade('#3ddc97', -0.5),
+          highlight: shade('#3ddc97', 0.22),
+        });
         bubbleText(ctx, String(c.index), bx, by, 30, { stroke: '#1c7d55', lineWidth: 4 });
       }
       ctx.restore();

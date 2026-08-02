@@ -11,7 +11,10 @@
 import { Game } from '../core/engine.js';
 import { Button } from '../core/ui.js';
 import { DragController } from '../core/input.js';
-import { candyCircle, candyRect, roundRect, softText, radial } from '../core/art.js';
+import {
+  candyCircle, candyRect, softText,
+  PX, px, stepAlpha, pixelRect, pixelCircle, pixelRing, HARD_SHADOW,
+} from '../core/art.js';
 import { drawSprite, hasSprite } from '../core/sprites.js';
 import { Ease } from '../core/anim.js';
 import { randInt, clamp, hashNoise, pick, TAU } from '../core/util.js';
@@ -166,7 +169,7 @@ export default class CookieKitchen extends Game {
     this.buttons.clear();
     this.bakeBtn = this.buttons.add(new Button({
       x: this.W - 250, y: this.tray.y + this.tray.h / 2 - 56,
-      w: 210, h: 112, r: 30, emoji: 'icon-flame', label: 'Bake!', color: '#ff7a3d',
+      w: 210, h: 112, r: PX * 2, emoji: 'icon-flame', label: 'Bake!', color: '#ff7a3d',
       enabled: false,
       onTap: () => this.bake(),
     }));
@@ -295,10 +298,11 @@ export default class CookieKitchen extends Game {
   draw(ctx) {
     this.drawOven(ctx);
     ctx.save();
-    // The whole tray slides into the oven when it bakes.
+    // The whole tray slides into the oven when it bakes — snapped to the texel
+    // grid, with a fade that steps in eighths.
     const slide = Ease.inOutCubic(clamp(this.baking, 0, 1));
-    ctx.translate(0, -slide * (this.tray.y - this.playTop + 40));
-    ctx.globalAlpha = 1 - slide * 0.55;
+    ctx.translate(0, -px(slide * (this.tray.y - this.playTop + 40)));
+    ctx.globalAlpha = stepAlpha(1 - slide * 0.55);
     this.drawTray(ctx);
     for (const c of this.cookies) if (c.slot >= 0 && !c.dragging) this.drawCookie(ctx, c);
     ctx.restore();
@@ -319,20 +323,22 @@ export default class CookieKitchen extends Game {
   drawOven(ctx) {
     if (this.baking <= 0) return;
     const glow = Ease.pulse(clamp(this.baking, 0, 1)) + this.baking * 0.4;
+    // Oven heat: flat concentric discs that stack toward the centre, each layer
+    // stepped in eighths — the 16-bit stand-in for the old radial glow.
     ctx.save();
-    ctx.fillStyle = radial(ctx, this.cx, this.playTop, 0, this.W * 0.5,
-      [[0, `rgba(255,170,60,${0.55 * glow})`], [1, 'rgba(255,170,60,0)']]);
-    ctx.fillRect(0, 0, this.W, this.H);
+    const bands = [[0.5, 0.2], [0.36, 0.3], [0.22, 0.4]];
+    for (const [rad, a] of bands) {
+      ctx.globalAlpha = stepAlpha(0.55 * glow * a);
+      pixelCircle(ctx, this.cx, this.playTop, this.W * rad, { fill: '#ffaa3c' });
+    }
     ctx.restore();
   }
 
   drawTray(ctx) {
     const t = this.tray;
-    // baking tray
+    // baking tray, with a flat parchment inner surface (chamfered, no arcs)
     candyRect(ctx, t.x, t.y, t.w, t.h, 26, '#a98763', { depth: 10, gloss: false });
-    roundRect(ctx, t.x + 10, t.y + 10, t.w - 20, t.h - 20, 18);
-    ctx.fillStyle = 'rgba(255,245,228,0.55)';
-    ctx.fill();
+    pixelRect(ctx, t.x + PX * 2, t.y + PX * 2, t.w - PX * 4, t.h - PX * 4, { fill: '#d8c3aa' });
 
     // ten frame(s): 5 + 5, with a heavier rule down the middle so the "five and
     // some more" structure is visible at a glance.
@@ -342,19 +348,13 @@ export default class CookieKitchen extends Game {
       for (let i = 0; i < 10; i++) {
         const col = i % 5;
         const row = Math.floor(i / 5);
-        roundRect(ctx, fx + col * this.cell + 4, fy + row * this.cell + 4, this.cell - 8, this.cell - 8, 14);
-        ctx.fillStyle = 'rgba(255,252,244,0.85)';
-        ctx.fill();
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = 'rgba(150,110,70,0.34)';
-        ctx.stroke();
+        pixelRect(ctx, fx + col * this.cell + PX, fy + row * this.cell + PX,
+          this.cell - PX * 2, this.cell - PX * 2,
+          { fill: '#f9f4e9', outline: '#dac8b1' });
       }
-      ctx.beginPath();
-      ctx.moveTo(fx, fy + this.cell);
-      ctx.lineTo(fx + t.frameW, fy + this.cell);
-      ctx.lineWidth = 5;
-      ctx.strokeStyle = 'rgba(120,90,60,0.55)';
-      ctx.stroke();
+      // the mid rule is a flat two-texel bar filling the gap between the rows
+      ctx.fillStyle = '#a3896e';
+      ctx.fillRect(px(fx), px(fy + this.cell) - PX, px(t.frameW), PX * 2);
     }
   }
 
@@ -362,12 +362,9 @@ export default class CookieKitchen extends Game {
   drawCounter(ctx) {
     const y = this.counterY + this.cell * 0.42;
     candyRect(ctx, 0, y, this.W, this.H - y, 0, '#c99a68', { depth: 0, gloss: false });
-    ctx.beginPath();
-    ctx.moveTo(0, y + 3);
-    ctx.lineTo(this.W, y + 3);
-    ctx.lineWidth = 5;
-    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
-    ctx.stroke();
+    // one-texel light band along the counter's top edge
+    ctx.fillStyle = '#e2c8ad';
+    ctx.fillRect(0, px(y) + PX, this.W, PX);
     softText(ctx, 'Drag the cookies onto the tray', this.cx, y + this.cell * 0.5, 24,
       { color: 'rgba(70,45,25,0.55)' });
   }
@@ -376,12 +373,11 @@ export default class CookieKitchen extends Game {
     const r = this.cell * 0.4;
     const wob = c.wobble > 0 ? Math.sin(this.t * 24) * 5 * c.wobble : 0;
     ctx.save();
-    ctx.translate(c.x + wob, c.y);
+    ctx.translate(px(c.x + wob), px(c.y));
     ctx.scale(scale, scale);
     if (c.dragging) {
-      ctx.shadowColor = 'rgba(60,40,25,0.35)';
-      ctx.shadowBlur = 22;
-      ctx.shadowOffsetY = 10;
+      // Hard offset silhouette under the held cookie — never a blur.
+      pixelCircle(ctx, 0, PX * 2, r, { fill: HARD_SHADOW });
     }
     if (hasSprite('cookie-1')) {
       // One of three chip layouts, chosen by id so a cookie keeps its face as it
@@ -391,27 +387,17 @@ export default class CookieKitchen extends Game {
       ctx.restore();
       return;
     }
-    candyCircle(ctx, 0, 0, r, c.locked ? '#c9853f' : DOUGH, { gloss: false });
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetY = 0;
-    // baked edge
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.94, 0, TAU);
-    ctx.lineWidth = r * 0.1;
-    ctx.strokeStyle = 'rgba(120,70,25,0.35)';
-    ctx.stroke();
+    // Pre-baked cookies take a flat lighter dough so they read as "already
+    // there" without looking broken.
+    candyCircle(ctx, 0, 0, r, c.locked ? '#d09456' : DOUGH, { gloss: false });
+    // baked edge — a hard pixel ring just inside the rim
+    pixelRing(ctx, 0, 0, px(r) - PX, PX, '#b7793f');
+    // chocolate chips as chunky one/two-texel squares
+    ctx.fillStyle = CHIP;
     for (const chip of c.chips) {
-      ctx.beginPath();
-      ctx.arc(Math.cos(chip.a) * r * chip.d, Math.sin(chip.a) * r * chip.d, r * chip.r, 0, TAU);
-      ctx.fillStyle = CHIP;
-      ctx.fill();
-    }
-    if (c.locked) {
-      // Pre-baked cookies read as "already there" without looking broken.
-      ctx.beginPath();
-      ctx.arc(0, 0, r, 0, TAU);
-      ctx.fillStyle = 'rgba(255,255,255,0.12)';
-      ctx.fill();
+      const s = Math.min(PX * 2, Math.max(PX, px(chip.r * r * 2)));
+      ctx.fillRect(px(Math.cos(chip.a) * r * chip.d - s / 2),
+        px(Math.sin(chip.a) * r * chip.d - s / 2), s, s);
     }
     ctx.restore();
   }

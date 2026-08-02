@@ -10,7 +10,10 @@
 
 import { Game } from '../core/engine.js';
 import { Button, drawSlot } from '../core/ui.js';
-import { candyRect, roundRect, starPath, heartPath, softText, bubbleText } from '../core/art.js';
+import {
+  candyRect, softText, bubbleText,
+  PX, px, pixelCircle, pixelRect, pixelLine, pixelPolyline,
+} from '../core/art.js';
 import { Ease } from '../core/anim.js';
 import { shuffle, pick, clamp, sample, TAU, shade } from '../core/util.js';
 import { drawSprite } from '../core/sprites.js';
@@ -30,6 +33,77 @@ const ATLAS_COLORS = ['pink', 'gold', 'sky', 'mint', 'purple', 'orange'];
 const shapeSprite = (shape, hex) => {
   const i = SHAPE_COLORS.indexOf(hex);
   return i < 0 ? null : `${shape}-${ATLAS_COLORS[i]}`;
+};
+
+/* ------------------------------------------------- pixel shape fallbacks */
+// Used only until the sprite sheet loads: each shape is rasterised onto the
+// texel grid with a hard 1-texel outline, so even the stand-ins read 16-bit.
+
+/** Even-odd point-in-polygon test — geometry only, never painted. */
+const inPoly = (pts, x, y) => {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const [xi, yi] = pts[i];
+    const [xj, yj] = pts[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+};
+
+/** Stamp a polygon as texel squares: flat fill plus a 1-texel edge outline. */
+function fillPixelPoly(ctx, pts, fill, outline) {
+  const xs = pts.map((p) => p[0]);
+  const ys = pts.map((p) => p[1]);
+  const x0 = px(Math.min(...xs)) - PX;
+  const y0 = px(Math.min(...ys)) - PX;
+  const cols = (px(Math.max(...xs)) + PX - x0) / PX + 1;
+  const rows = (px(Math.max(...ys)) + PX - y0) / PX + 1;
+  const hit = [];
+  for (let j = 0; j < rows; j++) {
+    hit.push([]);
+    for (let i = 0; i < cols; i++) {
+      hit[j].push(inPoly(pts, x0 + (i + 0.5) * PX, y0 + (j + 0.5) * PX));
+    }
+  }
+  for (const edgePass of [false, true]) {
+    ctx.fillStyle = edgePass ? outline : fill;
+    for (let j = 0; j < rows; j++) {
+      for (let i = 0; i < cols; i++) {
+        if (!hit[j][i]) continue;
+        const edge = !hit[j - 1]?.[i] || !hit[j + 1]?.[i] || !hit[j][i - 1] || !hit[j][i + 1];
+        if (edge === edgePass) ctx.fillRect(x0 + i * PX, y0 + j * PX, PX, PX);
+      }
+    }
+  }
+}
+
+/** Five-point star vertices for the rasteriser. */
+const starPoints = (cx, cy, outer, inner) => {
+  const pts = [];
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 === 0 ? outer : inner;
+    const a = -Math.PI / 2 + (i / 10) * TAU;
+    pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+  }
+  return pts;
+};
+
+/** Heart outline sampled from the classic two-lobe cubics — geometry only. */
+const heartPoints = (cx, cy, size) => {
+  const s = size / 16;
+  const cubic = (p0, c1, c2, p1, t) => {
+    const u = 1 - t;
+    return [
+      u * u * u * p0[0] + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0] + t * t * t * p1[0],
+      u * u * u * p0[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t * t * t * p1[1],
+    ];
+  };
+  const bottom = [cx, cy + 6 * s];
+  const top = [cx, cy - 5 * s];
+  const pts = [];
+  for (let i = 0; i <= 14; i++) pts.push(cubic(bottom, [cx - 12 * s, cy - 3 * s], [cx - 7 * s, cy - 12 * s], top, i / 14));
+  for (let i = 0; i <= 14; i++) pts.push(cubic(top, [cx + 7 * s, cy - 12 * s], [cx + 12 * s, cy - 3 * s], bottom, i / 14));
+  return pts;
 };
 
 export default class PatternParty extends Game {
@@ -241,14 +315,15 @@ export default class PatternParty extends Game {
     this.strip.forEach((token, i) => {
       const x = this.stripX + i * this.stripStep;
       const w = this.wave >= 0 ? this.wave : this.hintWave;
-      const lift = w >= 0 ? Math.max(0, Math.sin(w - i * 0.42)) * 18 : 0;
-      const sway = Math.sin(this.t * 1.3 + i * 0.5) * 5;
+      // Bob and wave-lift snap to the texel grid so the tiles step, not shimmer.
+      const lift = w >= 0 ? px(Math.max(0, Math.sin(w - i * 0.42)) * 18) : 0;
+      const sway = px(Math.sin(this.t * 1.3 + i * 0.5) * 5);
       this.drawToken(ctx, token, x, this.stripY + sway - lift, this.cell);
     });
 
     if (!this.placed) {
       const s = this.slotRect();
-      const sway = Math.sin(this.t * 1.3 + this.strip.length * 0.5) * 5;
+      const sway = px(Math.sin(this.t * 1.3 + this.strip.length * 0.5) * 5);
       drawSlot(ctx, s.x, s.y + sway, s.w, s.h, { r: 24, active: true, color: this.tint });
       bubbleText(ctx, '?', s.x + s.w / 2, s.y + s.h / 2 + sway, this.cell * 0.5,
         { fill: '#ffffff', stroke: shade(this.tint, -0.35) });
@@ -260,38 +335,34 @@ export default class PatternParty extends Game {
     }
   }
 
-  /** A washing line with a short string down to each tile. */
+  /**
+   * A washing line with a short string down to each tile — the sag curve is
+   * sampled and snapped to the texel grid, so the rope steps like pixels.
+   */
   drawBunting(ctx) {
     const y = this.stripY - this.cell * 0.42;
     const lineAt = (x) => {
       const k = x / Math.max(1, this.W);
       return (y - 18) + Math.sin(k * Math.PI) * 44;
     };
-    ctx.save();
-    ctx.strokeStyle = 'rgba(120,90,140,0.38)';
-    ctx.lineWidth = 6;
-    ctx.beginPath();
-    ctx.moveTo(0, y - 18);
-    ctx.quadraticCurveTo(this.cx, y + 26, this.W, y - 18);
-    ctx.stroke();
+    const rope = '#cba3cd'; // flat lilac — the old translucent stroke over the backdrop
+    const pts = [];
+    for (let x = 0; x <= this.W; x += PX * 6) pts.push([x, lineAt(x)]);
+    pts.push([this.W, lineAt(this.W)]);
+    pixelPolyline(ctx, pts, { color: rope, width: PX });
 
-    ctx.lineWidth = 3;
     const total = this.strip.length + 1;
     for (let i = 0; i < total; i++) {
       const x = this.stripX + i * this.stripStep + this.cell / 2;
-      const sway = Math.sin(this.t * 1.3 + i * 0.5) * 5;
-      ctx.beginPath();
-      ctx.moveTo(x, lineAt(x));
-      ctx.lineTo(x, this.stripY + sway);
-      ctx.stroke();
+      const sway = px(Math.sin(this.t * 1.3 + i * 0.5) * 5);
+      pixelLine(ctx, x, lineAt(x), x, this.stripY + sway, { color: rope, width: PX });
     }
-    ctx.restore();
   }
 
   /**
    * Tokens are drawn as atlas shapes on a candy tile — distinguishable by shape
-   * as well as colour (colour alone is a poor signal), with the vector paths
-   * standing in until the sheet loads.
+   * as well as colour (colour alone is a poor signal), with pixel-rasterised
+   * stand-ins until the sheet loads.
    */
   drawToken(ctx, token, x, y, size, tile = true) {
     if (tile) {
@@ -320,45 +391,39 @@ export default class PatternParty extends Game {
 
   drawShape(ctx, shape, color, cx, cy, r) {
     // The atlas carries all six shapes in all six palette colours. Its cells have
-    // a little padding, so the sprite draws a touch over the vector's 2r span —
-    // and falls through to the paths below until the sheet has loaded.
+    // a little padding, so the sprite draws a touch over the fallback's 2r span —
+    // and falls through to the pixel constructions below until the sheet loads.
     const key = shapeSprite(shape, color);
     if (key && drawSprite(ctx, key, cx, cy, r * 2.2)) return;
 
-    ctx.save();
-    ctx.beginPath();
+    const outline = shade(color, -0.5);
     switch (shape) {
       case 'circle':
-        ctx.arc(cx, cy, r, 0, TAU);
-        break;
+        pixelCircle(ctx, cx, cy, r, {
+          fill: color, outline, highlight: shade(color, 0.22), lowlight: shade(color, -0.22),
+        });
+        return;
       case 'square':
-        roundRect(ctx, cx - r * 0.9, cy - r * 0.9, r * 1.8, r * 1.8, r * 0.26);
-        break;
+        pixelRect(ctx, cx - r * 0.9, cy - r * 0.9, r * 1.8, r * 1.8, {
+          fill: color, outline, highlight: shade(color, 0.22), lowlight: shade(color, -0.22),
+        });
+        return;
       case 'triangle':
-        ctx.moveTo(cx, cy - r);
-        ctx.lineTo(cx + r * 0.92, cy + r * 0.72);
-        ctx.lineTo(cx - r * 0.92, cy + r * 0.72);
-        ctx.closePath();
-        break;
+        fillPixelPoly(ctx, [
+          [cx, cy - r], [cx + r * 0.92, cy + r * 0.72], [cx - r * 0.92, cy + r * 0.72],
+        ], color, outline);
+        return;
       case 'star':
-        starPath(ctx, cx, cy, r * 1.08, r * 0.48, 5);
-        break;
+        fillPixelPoly(ctx, starPoints(cx, cy, r * 1.08, r * 0.48), color, outline);
+        return;
       case 'heart':
-        heartPath(ctx, cx, cy, r * 2.2);
-        break;
+        fillPixelPoly(ctx, heartPoints(cx, cy, r * 2.2), color, outline);
+        return;
       default: // diamond
-        ctx.moveTo(cx, cy - r);
-        ctx.lineTo(cx + r * 0.82, cy);
-        ctx.lineTo(cx, cy + r);
-        ctx.lineTo(cx - r * 0.82, cy);
-        ctx.closePath();
+        fillPixelPoly(ctx, [
+          [cx, cy - r], [cx + r * 0.82, cy], [cx, cy + r], [cx - r * 0.82, cy],
+        ], color, outline);
     }
-    ctx.fillStyle = color;
-    ctx.fill();
-    ctx.lineWidth = Math.max(2, r * 0.14);
-    ctx.strokeStyle = shade(color, -0.3);
-    ctx.stroke();
-    ctx.restore();
   }
 
   /**
@@ -369,7 +434,7 @@ export default class PatternParty extends Game {
     this.choices.forEach((token, i) => {
       const b = this.buttons.get(`c${i}`);
       if (!b || b.hidden) return;
-      this.drawToken(ctx, token, b.x, b.y - b.press.value * 8, this.choiceSize, false);
+      this.drawToken(ctx, token, b.x, b.y - px(b.press.value * 8), this.choiceSize, false);
     });
 
     if (this.flyer) {

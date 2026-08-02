@@ -216,9 +216,10 @@ export function drawSprite(ctx, key, x, y, size, { rotate = 0, alpha = 1, shadow
   ctx.translate(x, y);
   if (rotate) ctx.rotate(rotate);
   if (shadow) {
+    // Hard offset silhouette — flat and blur-free, per the 16-bit style spec.
     ctx.shadowColor = 'rgba(44,35,64,0.3)';
-    ctx.shadowBlur = size * 0.16;
-    ctx.shadowOffsetY = size * 0.08;
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = Math.max(2, Math.round(size * 0.06 / 4) * 4);
   }
   ctx.drawImage(s.img, s.x, s.y, s.w, s.h, -w / 2, -h / 2, w, h);
   ctx.restore();
