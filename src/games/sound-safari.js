@@ -141,11 +141,14 @@ export default class SoundSafari extends Game {
     const word = this.entry.word;
     const sound = LETTER_SOUND[this.answer] || this.answer;
     const verb = this.mode === 'start' ? 'starts with' : 'ends with';
+    // Queued rather than interrupting: a new round starts while the previous
+    // answer's sentence may still be playing, and it must not be cut off
+    // mid-word. The 🔊 replay button stops speech itself before calling this.
     return this.audio.say([
       { text: word, rate: 0.72, gap: 0.35, delay },
       { text: `${word} ${verb} ${sound}, ${sound}`, rate: 0.8, gap: 0.3 },
       { text: 'Which letter?', rate: 0.95 },
-    ]);
+    ], { interrupt: false });
   }
 
   /** Visual only — the question is spoken for us. */

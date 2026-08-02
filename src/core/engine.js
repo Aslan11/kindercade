@@ -397,10 +397,16 @@ export class Game {
   /**
    * Say the instruction. This is the *only* place a game should speak its
    * prompt — override it when the prompt is a sequence rather than one line.
+   *
+   * Queued rather than interrupting: every game's next round begins while the
+   * last answer's sentence ("four plus one is five. Fantastic!") is still in
+   * the air, and an interrupting prompt cuts it off mid-word — the voice
+   * tripping over itself. Anywhere an instant restart is wanted (the 🔊
+   * replay button) calls `stopSpeech()` first, which empties the queue.
    */
   speakPrompt({ delay = 0 } = {}) {
     const line = this.promptSpeech || this.prompt;
-    if (line) this.audio.speak(line, { delay });
+    if (line) this.audio.speak(line, { delay, interrupt: false });
   }
 
   /**
