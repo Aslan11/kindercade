@@ -69,7 +69,16 @@ const SOLVERS = {
     }
     return true;
   },
-  'letter-trace': (g) => { g.coverage = 1; g.complete(); return true; },
+  // Write the glyph one stroke at a time, the way the child has to.
+  'letter-trace': (g) => {
+    let guard = 0;
+    while (!g.busy && guard++ < 12) {
+      const before = g.strokeIndex;
+      g.finishStroke();
+      if (g.strokeIndex === before) return false;
+    }
+    return true;
+  },
   'memory-match': (g) => {
     const a = g.cards.find((c) => !c.matched);
     if (!a) return false;
