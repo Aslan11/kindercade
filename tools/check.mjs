@@ -94,6 +94,34 @@ try {
   note(`manifest.webmanifest is not valid JSON: ${err.message}`);
 }
 
+/* ── 6. every spoken letter is a syllable, not an initialism ──────────── */
+
+/*
+ * Speech engines read a token they cannot pronounce one letter at a time, so a
+ * phonics spelling like "sss" comes out as "ess, ess, ess" and "ks" as
+ * "kay ess". Anything the voice says on its own therefore needs a vowel in it
+ * and no run of repeated letters.
+ */
+
+const { LETTER_SOUND, LETTER_NAME, ALPHABET } = await import(
+  new URL('../src/data/words.js', import.meta.url)
+);
+
+for (const [label, map] of [['LETTER_SOUND', LETTER_SOUND], ['LETTER_NAME', LETTER_NAME]]) {
+  for (const [letter, said] of Object.entries(map)) {
+    if (!/[aeiouy]/.test(said)) {
+      note(`${label}.${letter} = "${said}" has no vowel — the voice will spell it out`);
+    }
+    const run = said.match(/(.)\1\1+/);
+    if (run) {
+      note(`${label}.${letter} = "${said}" repeats "${run[1]}" — the voice will spell it out`);
+    }
+  }
+  for (const letter of ALPHABET) {
+    if (!map[letter]) note(`${label} has no entry for "${letter}"`);
+  }
+}
+
 /* ── report ───────────────────────────────────────────────────────────── */
 
 if (problems.length) {

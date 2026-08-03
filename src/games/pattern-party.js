@@ -146,7 +146,7 @@ export default class PatternParty extends Game {
     // rather than a second line spoken over the top of one.
     this.setPrompt('What comes next?', { speak: false });
     this.layout();
-    this.tweens.after(0.6, () => this.speakPrompt());
+    this.schedulePrompt(0.6);
   }
 
   /** A palette of distinct tokens to build this round's pattern from. */
