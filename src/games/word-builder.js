@@ -85,7 +85,7 @@ export default class WordBuilder extends Game {
     // different and much easier skill.
     this.setPrompt('Spell the word', { speak: false });
     this.layout();
-    this.tweens.after(0.3, () => this.speakPrompt());
+    this.schedulePrompt(0.3);
   }
 
   /** The word is *heard*, never shown — that is the whole exercise. */
@@ -167,6 +167,8 @@ export default class WordBuilder extends Game {
       t.slot = target.index;
       target.glow = 1;
       this.audio.place();
+      // The sound, not the name — dropping the c into c-a-t says "kuh". The
+      // spell-out that follows the last letter waits for this to finish.
       this.audio.speak(LETTER_SOUND[t.letter] || t.letter, { rate: 0.8 });
       this.fx.sparkle(target.x + target.w / 2, target.y + target.h / 2, 8, { color: '#cfe4ff', spread: 80 });
       this.layout();
@@ -239,9 +241,14 @@ export default class WordBuilder extends Game {
       // These timers only run while this game is running, so a child who leaves
       // mid-celebration never gets dragged into another round.
       if (this.finished) return;
-      this.audio.speak(pick(PRAISE));
-      if (this.roundsDone >= this.roundsTotal) this.finishRound({ title: pick(PRAISE) });
-      else this.newRound();
+      // The end-of-game panel has praise of its own; two in a row is one too many.
+      if (this.roundsDone >= this.roundsTotal) return this.finishRound({ title: pick(PRAISE) });
+      // Let the praise actually land. The next round used to start speaking
+      // 0.3s after this line began, which chopped it off after a syllable.
+      const praise = this.audio.speak(pick(PRAISE));
+      this.afterSpeech(praise, { min: 0.7, max: 3 }).then(() => {
+        if (!this.finished) this.newRound();
+      });
     });
   }
 

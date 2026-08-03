@@ -348,7 +348,9 @@ class AudioKit {
    * @param {number} o.rate       0.6–1.2; the caller's *intent*, trimmed by the
    *                              user's global rate preference
    * @param {number} o.pitch      ignored for neural voices (it only hurts them)
-   * @param {boolean} o.interrupt drop anything already queued or speaking
+   * @param {boolean} o.interrupt drop anything already queued. With `delay: 0`
+   *                              that includes the phrase speaking right now;
+   *                              with a delay it waits for it to finish
    * @param {number} o.delay      seconds to wait before this phrase starts
    * @param {number} o.gap        seconds of silence to hold *after* this phrase
    * @returns {Promise<void>} resolves when the phrase finishes (or is dropped)
@@ -373,7 +375,11 @@ class AudioKit {
       const prev = this._lastRequest;
       if (prev && prev.text === str && now - prev.at < AudioKit.DEDUPE_MS) return Promise.resolve();
       this._lastRequest = { text: str, at: now };
-      this._flush();
+      // A line asked for *later* clears the queue now, but must not cut off the
+      // phrase speaking at this instant — cancelling a quarter of a second
+      // before the new line starts is exactly what "the voice interrupts
+      // itself" sounds like. It waits its turn and counts its delay from there.
+      this._flush({ keepCurrent: delay > 0 });
     }
 
     let resolve;
@@ -412,11 +418,19 @@ class AudioKit {
     return out;
   }
 
-  /** Drop everything pending without bumping the epoch (used by `interrupt`). */
-  _flush() {
+  /**
+   * Drop everything pending without bumping the epoch (used by `interrupt`).
+   *
+   * `keepCurrent` leaves the utterance that is actually speaking alone: the
+   * queue behind it is still cleared, but it gets to finish its sentence and
+   * the next line starts when it ends.
+   */
+  _flush({ keepCurrent = false } = {}) {
     for (const item of this._queue) item.resolve?.();
     this._queue.length = 0;
     if (this._timer) { clearTimeout(this._timer); this._timer = null; }
+    // Nothing to cancel, and the watchdog belongs to the line we are sparing.
+    if (keepCurrent && this._current) return;
     if (this._watchdog) { clearTimeout(this._watchdog); this._watchdog = null; }
     if (this._current) {
       this._current.resolve?.();
@@ -502,12 +516,18 @@ class AudioKit {
    * most engines produce the unstressed article ("uh") rather than the letter
    * name, which is the opposite of what a child learning to spell needs.
    */
-  spellOut(word, { onLetter = null, letterGap = 0.26 } = {}) {
+  spellOut(word, { onLetter = null, letterGap = 0.26, delay = 0.2 } = {}) {
     if (!this.voiceOn || this.muted) return Promise.resolve();
-    this.stopSpeech();
     String(word).split('').forEach((ch, i) => {
       this.speak(LETTER_NAME[ch.toLowerCase()] || ch.toUpperCase(), {
-        rate: 0.85, gap: letterGap, interrupt: false, onStart: () => onLetter?.(i, ch),
+        rate: 0.85,
+        gap: letterGap,
+        // The first letter clears anything queued, but a line still speaking —
+        // typically the sound of the letter that just completed the word — is
+        // allowed to finish rather than being chopped off mid-breath.
+        interrupt: i === 0,
+        delay: i === 0 ? delay : 0,
+        onStart: () => onLetter?.(i, ch),
       });
     });
     return this.speak(word, { rate: 0.8, delay: 0.2, interrupt: false });

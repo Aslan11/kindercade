@@ -211,6 +211,11 @@ export class Game {
 
     this.prompt = '';
     this.promptSpeech = '';
+    // Both guard the opening line: `_booted` keeps `setPrompt` quiet until the
+    // game is on screen, `_promptScheduled` tells `_boot` a game has already
+    // lined its own intro up. See `_boot`.
+    this._booted = false;
+    this._promptScheduled = false;
     this.showPips = true;
     this.backdrop = {};
   }
@@ -235,9 +240,12 @@ export class Game {
     this._buildHud();
     this.init();
     this._relayout();
+    this._booted = true;
     // Give the intro speech a beat so it does not collide with the tap that
-    // launched the game.
-    this.tweens.after(0.45, () => this.speakPrompt());
+    // launched the game — but only when `init()` has not already scheduled its
+    // own opening line. Two copies of the same prompt starting a fraction of a
+    // second apart is the second one cutting the first one off.
+    if (!this._promptScheduled) this.tweens.after(0.45, () => this.speakPrompt());
   }
 
   _buildHud() {
@@ -391,7 +399,10 @@ export class Game {
   setPrompt(text, { speak = true, speech = null, delay = 0 } = {}) {
     this.prompt = text;
     this.promptSpeech = speech || text;
-    if (speak) this.speakPrompt({ delay });
+    // During `init()` the opening line belongs to `_boot`, which holds it back
+    // a beat. Speaking here as well starts the same line twice, and the second
+    // start cancels the first one part-way through a word.
+    if (speak && this._booted) this.speakPrompt({ delay });
   }
 
   /**
@@ -401,6 +412,18 @@ export class Game {
   speakPrompt({ delay = 0 } = {}) {
     const line = this.promptSpeech || this.prompt;
     if (line) this.audio.speak(line, { delay });
+  }
+
+  /**
+   * Say the prompt shortly, on the game's own clock.
+   *
+   * Use this instead of a bare `tweens.after(..., () => this.speakPrompt())`
+   * when a round wants to hold its opening line back: it also tells `_boot` not
+   * to speak a second, colliding copy of the very first one.
+   */
+  schedulePrompt(delay = 0.3) {
+    this._promptScheduled = true;
+    this.tweens.after(delay, () => this.speakPrompt());
   }
 
   /**

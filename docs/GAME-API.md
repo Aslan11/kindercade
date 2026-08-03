@@ -70,6 +70,22 @@ this.audio.spellOut('cat');                            // c — a — t — cat
 The HUD's 🔊 button re-speaks the current prompt automatically. Override
 `hintPulse()` to also wiggle whatever the child should touch next.
 
+The **opening line belongs to the engine**: a `setPrompt` inside `init()` is
+shown but not spoken, and the prompt goes out a beat later so it does not land
+on top of the tap that started the game. If your first round wants to hold its
+line back further — or your prompt is a spoken sequence rather than one line —
+schedule it with `this.schedulePrompt(0.3)` rather than a bare timer, so the
+engine knows not to speak a second, colliding copy:
+
+```js
+this.setPrompt('Spell the word', { speak: false });
+this.schedulePrompt(0.3);          // calls speakPrompt() on the game clock
+```
+
+Speech is queued, never layered: each line starts when the one before it has
+actually finished. `audio.speak(text, { delay })` still clears anything waiting
+behind it, but a line already speaking gets to finish its sentence first.
+
 ### Feedback
 
 ```js

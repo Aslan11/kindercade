@@ -162,11 +162,6 @@ export const VOWELS = ['a', 'e', 'i', 'o', 'u'];
 export const CONSONANTS = ALPHABET.filter((c) => !VOWELS.includes(c));
 
 /**
- * How a letter sounds when read aloud on its own. Speech synthesis says the
- * *letter name* ("bee"), which is what we want for spelling, but the phonics
- * game needs the *sound* ("buh"), so we spell it phonetically for the voice.
- */
-/**
  * How each letter is *named* out loud, for when the name is what's wanted —
  * spelling a word out, or asking a child to find a particular letter.
  *
@@ -181,11 +176,28 @@ export const LETTER_NAME = {
   x: 'ex', y: 'why', z: 'zee',
 };
 
+/**
+ * How a letter *sounds* on its own. Speech synthesis says the letter *name*
+ * ("bee"), which is what spelling needs, but a child sounding a word out needs
+ * the sound ("buh"), so it is spelled phonetically for the voice.
+ *
+ * Every value here has to be a syllable a speech engine can actually read.
+ * Written the way phonics books print them — "sss", "fff", "rrr" — a run of
+ * repeated consonants is not a word to any engine, so it gives up and reads the
+ * letters out one at a time: the child asks for the sound of S and hears
+ * "ess, ess, ess". Vowel-less spellings go the same way ("ks" comes out as
+ * "kay ess").
+ *
+ * So each sound is written as the shortest syllable that carries it. That adds
+ * a faint schwa to the continuants a teacher would hold instead ("suh" rather
+ * than a long hiss), which is the standard compromise in read-aloud phonics —
+ * and it is the same sound on every device, which the old spellings were not.
+ */
 export const LETTER_SOUND = {
-  a: 'ah', b: 'buh', c: 'kuh', d: 'duh', e: 'eh', f: 'fff', g: 'guh', h: 'huh',
-  i: 'ih', j: 'juh', k: 'kuh', l: 'lll', m: 'mmm', n: 'nnn', o: 'ah', p: 'puh',
-  q: 'kwuh', r: 'rrr', s: 'sss', t: 'tuh', u: 'uh', v: 'vvv', w: 'wuh',
-  x: 'ks', y: 'yuh', z: 'zzz',
+  a: 'ah', b: 'buh', c: 'kuh', d: 'duh', e: 'eh', f: 'fuh', g: 'guh', h: 'huh',
+  i: 'ih', j: 'juh', k: 'kuh', l: 'luh', m: 'muh', n: 'nuh', o: 'ah', p: 'puh',
+  q: 'kwuh', r: 'ruh', s: 'suh', t: 'tuh', u: 'uh', v: 'vuh', w: 'wuh',
+  x: 'kuss', y: 'yuh', z: 'zuh',
 };
 
 /** Number words 0–20, plus the tens, for the arithmetic games' voice-over. */

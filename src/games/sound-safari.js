@@ -95,7 +95,7 @@ export default class SoundSafari extends Game {
     this.setPrompt(this.questionText(), { speak: false });
     this.layout();
     this.tweens.to(this, { cardSlide: 1 }, 0.45, { ease: Ease.outBack });
-    this.tweens.after(0.3, () => this.speakPrompt());
+    this.schedulePrompt(0.3);
   }
 
   questionText() {
