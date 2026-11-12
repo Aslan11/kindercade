@@ -236,7 +236,10 @@ export default class LetterTrace extends Game {
       if (this.busy || !this.drawing) return;
     }
     this.last = p;
-    if (dist(p.x, p.y, path.pts[this.tip].x, path.pts[this.tip].y) > this.strayR) this.slip();
+    // The car may round a sharp point before the finger does; going right into the point is not straying.
+    const near = (q, r) => dist(p.x, p.y, q.x, q.y) <= r;
+    const behind = path.pts.slice(Math.max(0, this.tip - this.reach), this.tip);
+    if (!near(path.pts[this.tip], this.strayR) && !behind.some((q) => q.corner && near(q, this.catchR))) this.slip();
   }
 
   /**

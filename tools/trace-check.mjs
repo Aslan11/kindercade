@@ -17,9 +17,9 @@ import { GAMES } from '../src/games/index.js';
 
 const PORT = Number(process.env.PORT) || 8125;
 
-/** Finger wobble in paper units, and how coarsely the drag is sampled. */
+/** Finger wobble in paper units, and how finely the drag is sampled: a slow, careful finger down to a flick. */
 const JITTER = 18;
-const SAMPLES = [60, 24, 12];
+const SAMPLES = [200, 200, 200, 200, 200, 60, 24, 12];
 
 const failures = [];
 const fail = (msg) => { failures.push(msg); console.error('  ✗ ' + msg); };
