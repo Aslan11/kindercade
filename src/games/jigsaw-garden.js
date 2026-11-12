@@ -1,507 +1,279 @@
 /**
  * Jigsaw Garden — spatial reasoning, part-whole thinking and persistence.
  *
- * The picture is a finished 16-bit scene painting from the sprite atlas, drawn
- * cover-fit into an offscreen canvas and cut with real interlocking tabs: every
- * interior edge carries a knob on one side and the matching socket on the
- * other, seeded so both pieces always agree. The knob curves are pure math —
- * they are sampled, snapped to the texel grid and emitted as axis-stepped
- * staircase outlines, so the cut itself reads as pixel art. Until the painting
- * decodes, the old runtime composite stands in as a placeholder.
- *
- * A faint ghost of the finished picture stays visible inside the frame. That is
- * deliberate — for a five-year-old the challenge should be *placing* the piece,
- * not holding the whole image in their head.
+ * The picture is a living 3D scene, photographed onto chunky interlocking
+ * pieces. While the puzzle is in bits it holds still; drop in the last piece
+ * and it comes alive, and its star leaps out of the frame. A faint ghost of
+ * the picture stays on the board: for a small child the challenge should be
+ * *placing* the piece, not holding the whole image in their head.
  */
 
-import { Game } from '../core/engine.js';
-import { drawBackdrop, drawEmoji, softText, glassPanel, roundRect, PX, px, stepAlpha, HARD_SHADOW } from '../core/art.js';
-import { DragController } from '../core/input.js';
-import { loadScene } from '../core/sprites.js';
-import { Ease } from '../core/anim.js';
-import { shuffle, pick, clamp, randInt, makeRng, dist, lerp } from '../core/util.js';
-import { PRAISE } from '../data/words.js';
+import * as THREE from '../core/three.js';
+import { Game, V } from '../core/engine.js';
+import { Toy } from '../core/toy.js';
+import { build, INK } from '../core/kit.js';
+import { light } from '../core/stage.js';
+import { sky, ground, greenery, fence, clouds } from '../core/scenery.js';
+import { flower } from '../models/nature.js';
+import { makeRng, randInt, range, sample, shuffle } from '../core/util.js';
 
-const GRIDS = { 1: [2, 2], 2: [3, 2], 3: [3, 3] };
+/** Two puzzles per play: [columns, rows]. */
+const CUTS = { 1: [[2, 1], [2, 2]], 2: [[2, 2], [3, 2]], 3: [[3, 3], [4, 3]], 4: [[4, 3], [4, 4]] };
+const PIC_W = 6.2, PIC_H = 4.65, CENTRE = V(0.75, 3.4, 0), THICK = 0.16;
+const TRAY_Y = -0.36, TRAY_SLOTS = 4, TRAY_SIZE = 1.15;
 
-// `name` doubles as the scene painting's atlas name; the sky/hills/props are
-// only used for the placeholder composite drawn before the painting decodes.
+/** hero, sky, ground, then props as [model, size, x, y, z]. */
 const SCENES = [
-  { hero: '🦊', name: 'fox', sky: ['#cfefff', '#ffe7c4'], hills: ['#9ae7ac', '#68d18e'], props: ['🌷', '🍄', '🦋'] },
-  { hero: '🐢', name: 'turtle', sky: ['#c9f2ff', '#d9fff0'], hills: ['#8fe3d0', '#5fc9b6'], props: ['🌿', '🐚', '💧'] },
-  { hero: '🚂', name: 'train', sky: ['#ffe0c2', '#ffd0e0'], hills: ['#e8c39a', '#d3a878'], props: ['☁️', '🌵', '⛰️'] },
-  { hero: '🐳', name: 'whale', sky: ['#bfe4ff', '#a8d8ff'], hills: ['#7fc4e8', '#5aa8d6'], props: ['🌊', '⭐️', '🐠'] },
-  { hero: '🦋', name: 'butterfly', sky: ['#ffe4f4', '#fff4d8'], hills: ['#f5b8dd', '#e894c8'], props: ['🌸', '🌼', '🍃'] },
-  { hero: '🏰', name: 'castle', sky: ['#dfe4ff', '#ffeede'], hills: ['#b6c4f0', '#93a4e0'], props: ['🌟', '🌳', '🚩'] },
-  { hero: '🚀', name: 'rocket', sky: ['#d8e0ff', '#ffe0f0'], hills: ['#a9b6ef', '#8492dd'], props: ['⭐️', '🪐', '☄️'] },
-  { hero: '🐝', name: 'bee', sky: ['#fff3c9', '#ffe2c0'], hills: ['#c9e58f', '#a8d16a'], props: ['🌻', '🌺', '🍯'] },
+  ['lion', '#ffd98a', '#f2cf6a', [['giraffe', 2.4, -2.2, 0, -1], ['tree', 2.6, 2.4, 0, -2], ['sun', 1.3, 1.1, 3.1, -3], ['monkey', 1, 2, 0, 1.2]]],
+  ['whale', '#7fd8fa', '#2fa0e2', [['boat', 1.7, -2.2, 0, -1.6], ['fish', 1, 2.3, 0.2, 1], ['cloud', 1.6, 2, 3, -3], ['crab', 0.9, -2, 0, 1.4], ['sun', 1.1, -1.6, 3.2, -3]]],
+  ['rocket', '#35248a', '#cfc4f5', [['planet', 1.7, 2.2, 2.4, -2], ['star', 0.8, -2.3, 2.9, -1], ['robot', 1.4, -2.1, 0, 0.6], ['moon', 1, -0.9, 3.4, -3], ['gem', 0.7, 2.1, 0, 1.2]]],
+  ['unicorn', '#ffd6ee', '#8fe0a0', [['rainbow', 4.2, 0.3, 0.9, -3.5], ['castle', 2.2, 2.4, 0, -1.6], ['butterfly', 0.9, -2.3, 2.3, 0], ['mushroom', 0.9, -2.2, 0, 1.2]]],
+  ['dinosaur', '#bfe9ff', '#86d95c', [['tree', 2.8, -2.5, 0, -2], ['egg', 0.8, 2.2, 0, 1.3], ['cloud', 1.6, 1.7, 3.1, -3], ['rock', 1.2, 2.5, 0, -1], ['bird', 0.8, -1.2, 3, -1]]],
+  ['train', '#ffe0c2', '#e8c48a', [['cactus', 1.7, -2.5, 0, -0.8], ['house', 1.9, 2.4, 0, -2], ['balloon', 1.5, -1.3, 2.4, -2], ['sun', 1.1, 1.3, 3.3, -3], ['horse', 1.1, 2.2, 0, 1.3]]],
+  ['penguin', '#7fc8f7', '#dff1ff', [['igloo', 2.2, 2.2, 0, -1.4], ['fish', 0.8, -2.2, 0, 1.3], ['cloud', 1.5, -1.8, 3.1, -3], ['kite', 1.4, 1.6, 2.7, -1], ['gift', 0.9, -2.4, 0, -0.8]]],
+  ['cow', '#aee4ff', '#86d95c', [['house', 2.1, -2.4, 0, -2], ['hen', 0.9, 2.2, 0, 1.3], ['sunflower', 1.7, 2.5, 0, -0.8], ['bee', 0.8, -1.4, 2.8, 0], ['sun', 1.2, 1.4, 3.2, -3]]],
 ];
 
+/** One edge from (0,0) to (1,0) with a knob of height `s` (+ up, − down, 0 flat). */
+function edge(s) {
+  if (!s) return [[1, 0]];
+  const knob = range(13).map((i) => { const a = Math.PI * (1.28 - (i / 12) * 1.56); return [0.5 + Math.cos(a) * 0.125, 0.145 + Math.sin(a) * 0.125]; });
+  return [[0.39, 0], ...knob, [0.61, 0], [1, 0]].map(([x, y]) => [x, y * s]);
+}
+
 export default class JigsawGarden extends Game {
-  static meta = {
-    id: 'jigsaw-garden',
-    title: 'Jigsaw Garden',
-    subject: 'puzzle',
-    blurb: 'Slide the pieces to finish the picture.',
-    emoji: '🧩',
-    tint: '#3ddc97',
-  };
+  static meta = { id: 'jigsaw-garden', tint: '#2fc77f', music: 'garden' };
 
   init() {
-    this.maxLevel = 3;
-    const [cols, rows] = GRIDS[this.level] || GRIDS[1];
-    this.cols = cols;
-    this.rows = rows;
-    this.roundsTotal = cols * rows;
-    this.busy = false;
-    this.placedCount = 0;
-    this.seamFade = 0;
-    this.scene = pick(SCENES);
-    this.seed = randInt(1, 1e6);
-    this.pieces = [];
-    this.backdrop = { top: '#e4fff0', bottom: '#fff6dd', hills: ['#9ee8bd', '#6fd39c'] };
+    this.cuts = CUTS[this.level];
+    this.roundsTotal = this.cuts.length;
+    this.view = { pos: V(0, 3.4, 18), look: V(0, 2.85, 0), fov: 30 };
+    this.sway = 0.12;
+    this.light({ span: 9, centre: [0, 2, 0], from: [-3, 6, 9] });
+    sky(this);
+    const lawn = new THREE.Group();
+    lawn.position.y = -1.4;
+    const stage = { scene: lawn, every: (f) => this.every(f), poke: (...a) => this.poke(...a) };
+    ground(stage);
+    greenery(stage, { x: [-20, 20], z: [-20, -14], trees: 9, bushes: 9, seed: 41 });
+    lawn.add(build((b) => fence(b, -24, 24, -12.5)));
+    this.scene.add(lawn);
+    clouds(this, { y: [6, 10] });
+    this.scene.add(build((b) => {
+      b.box('#c9823c', [CENTRE.x, CENTRE.y, -0.3], [PIC_W + 0.5, PIC_H + 0.5, 0.3], { r: 0.14 });
+      b.both((s) => b.rod('#9a6238', [CENTRE.x + s * 2.6, 1.2, -0.5], [CENTRE.x + s * 3.2, -1.4, -0.5], 0.11));
+      b.box('#e8b878', [0.75, TRAY_Y, 0.3], [8.7, 1.82, 0.2], { r: 0.1 });
+      b.box('#fff3d6', [0.75, TRAY_Y, 0.4], [8.4, 1.56, 0.06], { r: 0.03, ao: false, surf: 'bright' });
+    }));
+    this.addPal([-4.8, -1.4, 1.2], { size: 1.9, hat: 'sun-hat' });
 
-    // The painting arrives asynchronously; re-render the offscreen picture when
-    // it lands. The pieces and the ghost both blit from that one canvas, so
-    // nothing else needs invalidating.
-    this.sceneImage = null;
-    loadScene(this.scene.name).then((img) => {
-      if (!img || !this.pieces) return;   // destroyed while decoding
-      this.sceneImage = img;
-      if (this.frame) this.renderPicture();
+    this.photo = new THREE.WebGLRenderTarget(960, 720, { samples: 4, colorSpace: THREE.SRGBColorSpace });
+    this.face = new THREE.MeshBasicMaterial({ map: this.photo.texture });
+    this.rim = new THREE.MeshBasicMaterial({ color: INK });
+    this.canvas = new THREE.Mesh(new THREE.PlaneGeometry(PIC_W, PIC_H), new THREE.MeshBasicMaterial({ map: this.photo.texture, transparent: true, opacity: 0.3 }));
+    Object.assign(this.canvas.userData, { owned: true, ownsMaterial: true });
+    this.canvas.position.copy(CENTRE).setZ(-0.13);
+    this.canvas.visible = false;
+    this.scene.add(build((b) => b.box('#fffaf0', [CENTRE.x, CENTRE.y, -0.16], [PIC_W, PIC_H, 0.04], { r: 0.01, seg: 1, ink: false, surf: 'bright' })), this.canvas);
+    this.blooms = 0;
+  }
+
+  /* ------------------------------------------------------------ the picture */
+
+  stagePicture([hero, skyColor, groundColor, props]) {
+    this.strike();
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(skyColor);
+    const key = light(scene, { span: 5, shadows: this.engine.shadows });
+    key.shadow.mapSize.set(1024, 1024);
+    scene.add(build((b) => { b.ball(groundColor, [0, -9, -2], [26, 9, 20], { seg: 40 }); b.ball(groundColor, [-5, -1.2, -9], [7, 2.4, 3]); b.ball(groundColor, [6, -1.2, -10], [6, 2.8, 3]); }, { shadow: false }));
+    const cast = [[hero, 2.9, 0, 0, 0.4], ...props].map(([name, size, ...p]) => {
+      const t = new Toy(name, size);
+      t.position.set(...p);
+      scene.add(t);
+      return t;
     });
-
-    this.drag = new DragController({
-      items: () => this.pieces,
-      canPick: (p) => !this.busy && !p.locked,
-      onPick: (p) => {
-        // Bring to front so a picked piece is never buried.
-        this.pieces.splice(this.pieces.indexOf(p), 1);
-        this.pieces.push(p);
-        p.lift = 1;
-        this.audio.pick();
-      },
-      onDrop: (p) => this.dropPiece(p),
-    });
-
-    this.setPrompt('Finish the picture', { speech: `Can you finish the ${this.scene.name} picture?` });
+    const camera = new THREE.PerspectiveCamera(30, PIC_W / PIC_H, 1, 80);
+    camera.position.set(0, 2.6, 9.4);
+    camera.lookAt(0, 1.75, 0);
+    this.picture = { scene, camera, cast, key, alive: false, stale: true };
   }
 
-  hintPulse() {
-    for (const p of this.pieces) if (!p.locked) p.wobble = 1;
+  strike() {
+    if (!this.picture) return;
+    this.picture.scene.traverse((o) => { if (o.userData.owned) o.geometry.dispose(); });
+    this.picture.key.shadow.dispose();
+    this.picture = null;
   }
 
-  /* ---------------------------------------------------------------- layout */
-
-  layout() {
-    if (!this.drag) return;
-
-    // The screen splits into a frame region and a tray band along the bottom.
-    this.trayH = clamp(this.H * 0.22, 150, 210);
-    const availH = this.H - this.playTop - this.trayH - 54;
-    const availW = this.W * 0.66;
-    // Cell and frame origin snap to the texel grid so every cut edge, seam
-    // line and staircase knob of adjacent pieces lands on the same texels.
-    const cell = Math.floor(Math.min(availW / this.cols, availH / this.rows) / PX) * PX;
-    this.pw = cell;
-    this.ph = cell;
-    const fw = cell * this.cols;
-    const fh = cell * this.rows;
-    this.frame = {
-      x: px(this.cx - fw / 2),
-      y: px(this.playTop + (availH - fh) / 2),
-      w: fw, h: fh,
-    };
-    this.trayTop = this.H - this.trayH;
-    this.trayY = this.trayTop + this.trayH * 0.46;
-
-    this.renderPicture();
-    this.buildPieces();
+  beforeRender(renderer) {
+    const p = this.picture;
+    if (!p || !(p.alive || p.stale)) return;
+    p.stale = false;
+    renderer.setRenderTarget(this.photo);
+    renderer.clear();
+    renderer.render(p.scene, p.camera);
   }
 
-  /* -------------------------------------------------------------- the image */
+  update(dt) { if (this.picture?.alive) for (const t of this.picture.cast) t.tick(dt, this.t); }
 
-  /** Draws the scene onto an offscreen canvas at the frame's pixel size. */
-  renderPicture() {
-    const w = Math.max(64, this.frame.w);
-    const h = Math.max(64, this.frame.h);
-    this.picture = this.picture || document.createElement('canvas');
-    this.picture.width = w;
-    this.picture.height = h;
-    const c = this.picture.getContext('2d');
-    const s = this.scene;
-    const rng = makeRng(this.seed);
+  /* ---------------------------------------------------------------- the cut */
 
-    // The finished painting, cover-fit: fill the frame, keep the aspect ratio,
-    // crop the overflow evenly and leave the pixels chunky.
-    const img = this.sceneImage;
-    if (img) {
-      const k = Math.max(w / img.width, h / img.height);
-      const dw = img.width * k;
-      const dh = img.height * k;
-      c.imageSmoothingEnabled = false;
-      c.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
-      return;
-    }
-
-    // Placeholder until the painting decodes: the old runtime composite.
-    drawBackdrop(c, w, h, 2.5, {
-      top: s.sky[0], bottom: s.sky[1], hills: s.hills, sun: true, clouds: 2,
-      sunX: 0.2 + rng() * 0.6, sunY: 0.14 + rng() * 0.1,
-    });
-
-    // Scattered decorations behind the hero.
-    for (let i = 0; i < 7; i++) {
-      const px = w * (0.06 + rng() * 0.88);
-      const py = h * (0.45 + rng() * 0.48);
-      drawEmoji(c, s.props[i % s.props.length], px, py, Math.min(w, h) * (0.08 + rng() * 0.06));
-    }
-    // A few dappled clusters of texel squares for depth.
-    for (let i = 0; i < 4; i++) {
-      const bx = w * rng();
-      const by = h * (0.5 + rng() * 0.5);
-      const br = Math.min(w, h) * (0.08 + rng() * 0.1);
-      c.save();
-      c.globalAlpha = stepAlpha(0.18);
-      c.fillStyle = '#ffffff';
-      for (let j = 0; j < 14; j++) {
-        const a = rng() * Math.PI * 2;
-        const d = Math.sqrt(rng()) * br;
-        c.fillRect(px(bx + Math.cos(a) * d), px(by + Math.sin(a) * d), PX * 2, PX * 2);
-      }
-      c.restore();
-    }
-    // Hero, big and centred.
-    drawEmoji(c, s.hero, w * 0.5, h * 0.5, Math.min(w, h) * 0.56, { shadow: true });
-    // Pixel plus-shape twinkles in the sky.
-    for (let i = 0; i < 5; i++) {
-      const sx = px(w * rng());
-      const sy = px(h * rng() * 0.55);
-      const arm = Math.max(PX, px(Math.min(w, h) * 0.03));
-      c.save();
-      c.globalAlpha = stepAlpha(0.5);
-      c.fillStyle = '#ffffff';
-      c.fillRect(sx - arm, sy, arm * 2 + PX, PX);
-      c.fillRect(sx, sy - arm, PX, arm * 2 + PX);
-      c.restore();
-    }
-  }
-
-  /* ------------------------------------------------------------- the cut */
-
-  /**
-   * Edge signs are derived from a seeded RNG so the two pieces sharing an edge
-   * always compute the same knob direction: the piece on the left owns the sign,
-   * the piece on the right takes its negation.
-   */
-  edgeSign(kind, r, c) {
-    const rng = makeRng(this.seed + (kind === 'v' ? 7919 : 104729) + r * 131 + c * 17);
-    return rng() < 0.5 ? -1 : 1;
-  }
-
-  /** Right edge of (r,c) — shared with the left edge of (r,c+1). */
-  vSign(r, c) { return c < 0 || c >= this.cols - 1 ? 0 : this.edgeSign('v', r, c); }
-  /** Bottom edge of (r,c) — shared with the top edge of (r+1,c). */
-  hSign(r, c) { return r < 0 || r >= this.rows - 1 ? 0 : this.edgeSign('h', r, c); }
-
-  /**
-   * A single piece outline in local coordinates, with a tab (or socket, or a
-   * straight border edge) on each side. The knob beziers are used only as MATH:
-   * each curve is sampled, the samples snap to the texel grid, and the outline
-   * is emitted as an axis-stepped staircase. Both pieces sharing an edge sample
-   * the identical physical curve (one is the exact reverse of the other), and
-   * the step corner is picked independent of travel direction, so the two
-   * staircases complement each other texel for texel.
-   */
-  piecePath(r, c) {
-    const w = this.pw;
-    const h = this.ph;
-    const tab = Math.min(w, h) * 0.2;    // how far the knob sticks out
-    const neck = 0.36;                   // where along the edge the knob sits
-    const steps = clamp(Math.round(tab), 10, 40);   // samples per knob curve
-
-    // Grid-snapped sample list, skipping consecutive duplicates.
-    const pts = [];
-    const add = (x, y) => {
-      const qx = px(x);
-      const qy = px(y);
-      const last = pts[pts.length - 1];
-      if (last && last[0] === qx && last[1] === qy) return;
-      pts.push([qx, qy]);
-    };
-    // Cubic bezier point — sampling math only, never painted directly.
-    const cubic = (p0, c1, c2, p1, t) => {
-      const u = 1 - t;
-      const a = u * u * u, b = 3 * u * u * t, d = 3 * u * t * t, e = t * t * t;
-      return [
-        a * p0[0] + b * c1[0] + d * c2[0] + e * p1[0],
-        a * p0[1] + b * c1[1] + d * c2[1] + e * p1[1],
+  cut(cols, rows) {
+    const w = PIC_W / cols, h = PIC_H / rows, k = Math.min(w, h);
+    const rng = makeRng(randInt(1, 1e6));
+    const sign = () => (rng() < 0.5 ? -1 : 1);
+    // Each shared edge gets one knob direction, read by the pieces on both sides.
+    const across = range(rows + 1).map((r) => range(cols).map(() => (r && r < rows ? sign() : 0)));
+    const down = range(rows).map(() => range(cols + 1).map((c) => (c && c < cols ? sign() : 0)));
+    const along = (len, s) => edge(s).map(([t, n]) => [len / 2 + (t - 0.5) * (t === 1 ? len : k), n * k]);
+    return range(cols * rows).map((i) => {
+      const c = i % cols, r = Math.floor(i / cols);
+      const pts = [
+        ...along(w, across[r + 1][c]).map(([t, n]) => [t - w / 2, -h / 2 + n]),            // bottom, left to right
+        ...along(h, down[r][c + 1]).map(([t, n]) => [w / 2 + n, t - h / 2]),                // right, going up
+        ...along(w, across[r][c]).map(([t, n]) => [w / 2 - t, h / 2 + n]),                  // top, right to left
+        ...along(h, down[r][c]).map(([t, n]) => [-w / 2 + n, h / 2 - t]),                   // left, going down
       ];
-    };
-
-    // Each edge is traced left-to-right / top-to-bottom in local space; `sign`
-    // of +1 pushes the knob outward, -1 carves it inward.
-    const edge = (x0, y0, x1, y1, sign) => {
-      if (!sign) { add(x1, y1); return; }
-      const dx = x1 - x0;
-      const dy = y1 - y0;
-      // Perpendicular, pointing "out" of the piece.
-      const nx = dy;
-      const ny = -dx;
-      const len = Math.hypot(nx, ny) || 1;
-      const ux = (nx / len) * tab * sign;
-      const uy = (ny / len) * tab * sign;
-      const at = (t) => [x0 + dx * t, y0 + dy * t];
-
-      const a = at(neck);
-      const b = at(1 - neck);
-      const [mx, my] = at(0.5);
-      const m = [mx + ux, my + uy];
-      add(a[0], a[1]);
-      for (let i = 1; i <= steps; i++) {
-        const [sx, sy] = cubic(
-          a, [a[0] + ux * 0.1, a[1] + uy * 0.1],
-          [mx - dx * 0.16 + ux * 1.25, my - dy * 0.16 + uy * 1.25], m, i / steps,
-        );
-        add(sx, sy);
-      }
-      for (let i = 1; i <= steps; i++) {
-        const [sx, sy] = cubic(
-          m, [mx + dx * 0.16 + ux * 1.25, my + dy * 0.16 + uy * 1.25],
-          [b[0] + ux * 0.1, b[1] + uy * 0.1], b, i / steps,
-        );
-        add(sx, sy);
-      }
-      add(x1, y1);
-    };
-
-    add(0, 0);
-    edge(0, 0, w, 0, -this.hSign(r - 1, c));    // top: complement of the piece above
-    edge(w, 0, w, h, this.vSign(r, c));         // right
-    edge(w, h, 0, h, this.hSign(r, c));         // bottom
-    edge(0, h, 0, 0, -this.vSign(r, c - 1));    // left: complement of the piece to the left
-    const first = pts[0];
-    const last = pts[pts.length - 1];
-    if (last[0] === first[0] && last[1] === first[1]) pts.pop();
-
-    // Emit the staircase: samples that differ on both axes route through a
-    // corner at (x of the lower point, y of the upper point) — the same
-    // physical corner no matter which piece walks the edge.
-    const p = new Path2D();
-    p.moveTo(pts[0][0], pts[0][1]);
-    for (let i = 1; i <= pts.length; i++) {
-      const [x0p, y0p] = pts[i - 1];
-      const [x1p, y1p] = pts[i % pts.length];
-      if (x0p !== x1p && y0p !== y1p) {
-        p.lineTo(y0p > y1p ? x0p : x1p, Math.min(y0p, y1p));
-      }
-      p.lineTo(x1p, y1p);
-    }
-    p.closePath();
-    return p;
-  }
-
-  buildPieces() {
-    const existing = new Map(this.pieces.map((p) => [`${p.r},${p.c}`, p]));
-    const pieces = [];
-    for (let r = 0; r < this.rows; r++) {
-      for (let c = 0; c < this.cols; c++) {
-        const prev = existing.get(`${r},${c}`);
-        const piece = prev || {
-          r, c, locked: false, dragging: false, lift: 0, wobble: 0, trayIndex: 0,
-        };
-        piece.path = this.piecePath(r, c);
-        piece.homeX = this.frame.x + c * this.pw + this.pw / 2;
-        piece.homeY = this.frame.y + r * this.ph + this.ph / 2;
-        piece.hitRadius = Math.min(this.pw, this.ph) * 0.46;
-        pieces.push(piece);
-      }
-    }
-    this.pieces = pieces;
-
-    // Shuffle the tray once, so the pieces are not sitting in solution order.
-    if (!this.trayOrdered) {
-      const order = shuffle(pieces.map((_, i) => i));
-      pieces.forEach((p, i) => { p.trayIndex = order[i]; });
-      this.trayOrdered = true;
-    }
-
-    // Pieces shrink to fit the tray — in both directions — and grow back to
-    // full size when picked up.
-    const loose = this.pieces.filter((p) => !p.locked).sort((a, b) => a.trayIndex - b.trayIndex);
-    const laneW = this.W * 0.92;
-    this.trayScale = clamp(Math.min(
-      laneW / Math.max(1, loose.length * this.pw * 1.06),
-      (this.trayH * 0.72) / this.ph,
-    ), 0.34, 1);
-
-    // Inset by half a piece so nothing hangs off either edge of the screen.
-    const usable = Math.max(0, laneW - this.pw * this.trayScale);
-    const step = loose.length > 1 ? usable / (loose.length - 1) : 0;
-    loose.forEach((p, i) => {
-      p.trayX = loose.length === 1 ? this.cx : this.cx - usable / 2 + i * step;
-      p.trayY = this.trayY;
-      p.hitRadius = Math.min(this.pw, this.ph) * 0.46 * this.trayScale;
-      if (!p.dragging) { p.x = p.trayX; p.y = p.trayY; }
+      const geo = new THREE.ExtrudeGeometry(new THREE.Shape(pts.map(([x, y]) => new THREE.Vector2(x, y))), {
+        depth: THICK, bevelEnabled: true, bevelSize: 0.028, bevelOffset: -0.028, bevelThickness: 0.01, bevelSegments: 1,
+      });
+      const home = V(CENTRE.x + (c + 0.5) * w - PIC_W / 2, CENTRE.y + PIC_H / 2 - (r + 0.5) * h, -0.1);
+      const { position, uv } = geo.attributes;
+      for (let v = 0; v < uv.count; v++) uv.setXY(v, (position.getX(v) + home.x - CENTRE.x) / PIC_W + 0.5, (position.getY(v) + home.y - CENTRE.y) / PIC_H + 0.5);
+      const mesh = new THREE.Mesh(geo, [this.face, this.rim]);
+      mesh.castShadow = true;
+      mesh.userData.owned = true;
+      const piece = new Toy(mesh, 0.4, { idle: 0 });
+      return Object.assign(piece, { home, snap: k * 0.5, small: TRAY_SIZE / Math.max(w * 0.76, h), hotAt: V() });
     });
-    for (const p of this.pieces) {
-      if (p.locked) { p.x = p.homeX; p.y = p.homeY; p.hitRadius = 0; }
+  }
+
+  /* ----------------------------------------------------------------- rounds */
+
+  async play() {
+    const unseen = shuffle(SCENES);
+    for (const [cols, rows] of this.cuts) {
+      const scene = await this.pickPicture(unseen);
+      this.stagePicture(scene);
+      this.canvas.visible = true;
+      this.canvas.material.opacity = 0.3;
+      this.canvas.position.z = -0.13;
+      this.audio.magic();
+      this.waiting = shuffle(this.cut(cols, rows));
+      this.placed = [];
+      this.tray = new Array(TRAY_SLOTS).fill(null);
+      this.refill();
+      this.prompt('Finish the picture', `Drag the pieces to finish the ${scene[0]} picture!`);
+      await this.ask();
+      await this.comeAlive(scene[0]);
     }
+    this.finish();
   }
 
-  /** Full size in the frame or in hand; shrunk while waiting in the tray. */
-  pieceScale(p) {
-    if (p.locked) return 1;
-    return lerp(this.trayScale ?? 1, 1.06, clamp(p.lift, 0, 1));
+  /** The child chooses what to build. */
+  async pickPicture(unseen) {
+    this.canvas.visible = false;
+    const offer = sample(unseen, 3);
+    const toys = this.offered = this.row(offer.map(([hero]) => new Toy(hero, 1.75)), { x: CENTRE.x, y: CENTRE.y - 0.9, z: 0.5, gap: 2.05 });
+    toys.forEach((t, i) => this.hot(t, { r: 1, tap: () => { t.hop().spin(); this.audio.squeak(); this.resolve(i); } }));
+    this.prompt('Pick a picture', 'Which picture shall we make?');
+    const i = await this.ask();
+    this.offered = null;
+    toys.forEach((t, k) => this.vanish(t, k === i ? 0.5 : 0));
+    await this.wait(0.8);
+    return unseen.splice(unseen.indexOf(offer[i]), 1)[0];
   }
 
-  /* ----------------------------------------------------------------- input */
+  /** Only a few pieces are out at once, so each stays big enough to grab. */
+  refill() {
+    const wide = Math.min(TRAY_SLOTS, this.waiting.length + this.tray.filter(Boolean).length + this.placed.length);
+    this.tray.forEach((p, i) => {
+      if (p || !this.waiting.length) return;
+      const piece = this.tray[i] = this.waiting.pop();
+      piece.rest = [CENTRE.x + (i - (wide - 1) / 2) * (wide > 2 ? 2.05 : 3), TRAY_Y, 0.8];
+      piece.position.set(...piece.rest);
+      this.scene.add(piece);
+      this.appear(piece, i * 0.08, piece.small);
+      this.hot(piece, {
+        r: 0.85, when: () => !piece.done,
+        tap: () => piece.hop(0.6).wiggle(0.4),
+        // In the hand it is nearer the camera, so a touch under full size looks right.
+        lift: () => this.scaleTo(piece, 0.94, 0.18),
+        drop: () => this.dropped(piece),
+      });
+    });
+  }
 
-  onPointerDown(p) { if (!this.busy) this.drag.begin(p); }
-  onPointerMove(p) { this.drag.move(p); }
-  onPointerUp(p) { this.drag.end(p); }
-
-  dropPiece(piece) {
-    piece.lift = 0;
-    // A generous snap radius: near enough is right, for these hands.
-    // buildPieces() re-homes everything, so remember the drop point and animate
-    // from there rather than teleporting.
-    const from = { x: piece.x, y: piece.y };
-
-    if (dist(piece.x, piece.y, piece.homeX, piece.homeY) < Math.min(this.pw, this.ph) * 0.55) {
-      piece.locked = true;
-      this.placedCount++;
-      this.roundsDone = this.placedCount;
-      this.audio.place();
-      this.fx.sparkle(piece.homeX, piece.homeY, 10, { color: '#d8ffe8', spread: 90 });
-      this.buildPieces();
-      piece.x = from.x;
-      piece.y = from.y;
-      this.tweens.to(piece, { x: piece.homeX, y: piece.homeY }, 0.14, { ease: Ease.outQuad });
-      if (this.placedCount >= this.cols * this.rows) this.complete();
+  dropped(piece) {
+    if (this.gap(piece, piece.home) > piece.snap) {
+      this.audio.swoop();
+      this.scaleTo(piece, piece.small, 0.28);
+      this.jump(piece, piece.rest, { height: 0.3, dur: 0.3 });
       return;
     }
-
-    this.buildPieces();
-    const home = { x: piece.trayX, y: piece.trayY };
-    piece.x = from.x;
-    piece.y = from.y;
-    this.tweens.to(piece, home, 0.3, { ease: Ease.outBack });
+    piece.done = true;
+    this.tray[this.tray.indexOf(piece)] = null;
+    this.placed.push(piece);
+    this.scaleTo(piece, 1, 0.14);
+    this.moveTo(piece, piece.home.toArray(), 0.14).then(() => piece.boing(0.5));
+    this.audio.place();
+    this.audio.step(this.placed.length);
+    this.fx.sparkle(this.at(piece.home), 12, { spread: 3 });
+    this.bloom();
+    this.refill();
+    if (!this.tray.some(Boolean)) this.resolve();
   }
 
-  complete() {
-    this.busy = true;
-    this.audio.correct();
-    // Seams dissolve so the picture becomes whole before the celebration.
-    this.tweens.to(this, { seamFade: 1 }, 0.7);
-    this.tweens.after(0.5, () => {
-      this.fx.confetti(this.cx, this.frame.y + this.frame.h / 2, 60);
-      this.audio.speak(`You finished the ${this.scene.name}! ${pick(PRAISE)}`);
-    });
-    this.tweens.after(2.6, () => this.finishRound({ title: pick(PRAISE) }));
+  /** Every piece placed grows a flower. */
+  bloom() {
+    const n = this.blooms++, side = n % 2 ? 1 : -1, k = Math.floor(n / 2);
+    const mesh = build((b) => flower(b, { petal: ['#ff8fd0', '#ffd23c', '#ffffff', '#c9a8ff', '#ff6b8b'][n % 5], face: true }));
+    const f = new Toy(mesh, 1);
+    f.position.set(CENTRE.x + side * (5.2 + (k % 3) * 1.1 + Math.floor(k / 3) * 0.35), -1.4, -5.5 - Math.floor(k / 3) * 1.4);
+    this.scene.add(f);
+    this.appear(f, 0.1, 1.7);
+    this.poke(f, { r: 0.4, sound: 'squeak' });
   }
 
-  /* ------------------------------------------------------------------ frame */
-
-  update(dt) {
-    for (const p of this.pieces) if (p.wobble > 0) p.wobble = Math.max(0, p.wobble - dt * 1.3);
-    if (this.drag.held) this.fx.trail(this.drag.held.x, this.drag.held.y, 'rgba(210,255,230,0.8)');
+  async comeAlive(hero) {
+    await this.wait(0.35);
+    this.win(CENTRE);
+    this.audio.magic();
+    // The seamless picture fades in over the pieces, and starts to move.
+    this.canvas.position.z = 0.1;
+    this.canvas.material.opacity = 0;
+    this.picture.alive = true;
+    this.picture.cast.forEach((t) => { t.dancing = true; });
+    await this.to(this.canvas.material, { opacity: 1 }, 0.6);
+    this.remove(...this.placed);
+    await this.wait(0.9);
+    this.picture.cast[0].visible = false;
+    const star = this.toy(hero, 2.6, [CENTRE.x, CENTRE.y - 1.7, 0.4]);
+    this.audio.pop();
+    this.fx.starBurst(this.at(star), 12);
+    star.spin();
+    await this.jump(star, [CENTRE.x, -1.15, 2.4], { height: 1.6, dur: 0.6 });
+    star.dancing = true;
+    await this.talk(`You finished the ${hero}!`, { min: 2.2 });
+    this.vanish(star);
+    await this.to(this.canvas.material, { opacity: 0 }, 0.4);
+    this.picture.alive = false;
   }
 
-  draw(ctx) {
-    const f = this.frame;
-
-    // Frame + ghost of the finished picture, so the child can see where things go.
-    glassPanel(ctx, f.x - 14, f.y - 14, f.w + 28, f.h + 28, 28, { alpha: 0.5 });
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(f.x, f.y, f.w, f.h);
-    ctx.clip();
-    ctx.globalAlpha = stepAlpha(0.32);
-    ctx.drawImage(this.picture, f.x, f.y, f.w, f.h);
-    ctx.restore();
-
-    // Grid guide as texel-wide seam lines, dissolving in stepped eighths.
-    if (this.seamFade < 1) {
-      ctx.save();
-      ctx.globalAlpha = stepAlpha(0.3 * (1 - this.seamFade));
-      ctx.fillStyle = '#ffffff';
-      for (let c = 1; c < this.cols; c++) {
-        ctx.fillRect(f.x + c * this.pw, f.y, PX, f.h);
-      }
-      for (let r = 1; r < this.rows; r++) {
-        ctx.fillRect(f.x, f.y + r * this.ph, f.w, PX);
-      }
-      ctx.restore();
-    }
-
-    // Tray shelf, as a chamfered pixel band across the bottom of the screen.
-    if (this.placedCount < this.cols * this.rows) {
-      ctx.save();
-      const tx = px(this.W * 0.02);
-      const ty = px(this.trayTop);
-      const tw = px(this.W * 0.96);
-      roundRect(ctx, tx, ty, tw, px(this.trayH + 40), 8);
-      ctx.fillStyle = 'rgba(255,255,255,0.42)';
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(44,35,64,0.2)';
-      ctx.lineWidth = PX;
-      ctx.stroke();
-      // A 1-texel light band along the inside top edge of the shelf.
-      ctx.fillStyle = 'rgba(255,255,255,0.55)';
-      ctx.fillRect(tx + PX * 2, ty + PX, tw - PX * 4, PX);
-      ctx.restore();
-      softText(ctx, 'Drag the pieces into the picture', this.cx, this.trayTop - 14, 24,
-        { color: 'rgba(44,35,64,0.45)' });
-    }
-
-    for (const p of this.pieces) if (p.locked) this.drawPiece(ctx, p);
-    for (const p of this.pieces) if (!p.locked && !p.dragging) this.drawPiece(ctx, p);
-    for (const p of this.pieces) if (p.dragging) this.drawPiece(ctx, p);
+  solution() {
+    if (this.offered) return { tap: this.offered[0] };
+    const piece = this.tray.find(Boolean);
+    return piece && { drag: [piece, piece.home] };
   }
 
-  /**
-   * Clip to the piece's staircase outline, draw the slice of the picture that
-   * belongs there, then stroke the edge as a hard 1-texel seam.
-   */
-  drawPiece(ctx, p) {
-    const wob = p.wobble > 0 ? px(Math.sin(this.t * 20) * 5 * p.wobble) : 0;
-    const scale = this.pieceScale(p);
-    ctx.save();
-    ctx.translate(p.x + wob, p.y);
-    ctx.scale(scale, scale);
-    ctx.translate(-this.pw / 2, -this.ph / 2);
-
-    if (p.lift > 0.1) {
-      // Hard offset silhouette shadow: the piece's own outline, a couple of
-      // texels down, flat and blur-free.
-      ctx.save();
-      ctx.translate(0, PX * 2);
-      ctx.fillStyle = HARD_SHADOW;
-      ctx.fill(p.path);
-      ctx.restore();
-    }
-
-    ctx.save();
-    ctx.clip(p.path);
-    // Pieces are scaled down in the tray and up in hand — keep the pixels hard.
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(this.picture, -p.c * this.pw, -p.r * this.ph, this.frame.w, this.frame.h);
-    ctx.restore();
-
-    if (!(p.locked && this.seamFade >= 1)) {
-      // Locked seams dissolve in stepped eighths once the puzzle completes.
-      ctx.globalAlpha = stepAlpha(0.875 * (p.locked ? 1 - this.seamFade : 1));
-      ctx.lineWidth = PX;
-      ctx.strokeStyle = '#ffffff';
-      ctx.stroke(p.path);
-    }
-    ctx.restore();
-  }
+  nudgeChoices() { (this.offered || this.tray).forEach((p) => p?.wiggle(0.5)); }
+  hint() { if (this.offered) this.replayPrompt(); else this.point(this.solution()); }
 
   destroy() {
-    this.picture = null;
-    this.sceneImage = null;
-    this.pieces = null;
+    this.strike();
+    this.photo.dispose();
+    this.face.dispose();
+    this.rim.dispose();
   }
 }

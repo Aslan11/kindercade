@@ -1,191 +1,109 @@
 /**
- * Plays each game through to the end.
+ * Plays every level of every game through to the prize screen.
  *
- * The tap-based smoke test never reaches a finished round, so this drives the
- * games from the inside — answering correctly via the debug handle — to prove
- * that scoring, the results panel, star awarding and the level unlock all
- * actually work. That last screen is the payoff for the child; it should not be
- * the least-tested part of the app.
+ * Each game knows its own right answer (`solution()` — it is what the hint
+ * glove points at), so this asks where that is on screen and then really taps
+ * or drags there with the mouse. A target that is off screen, hidden under the
+ * HUD or shadowed by a neighbour fails here rather than in a lap. The first
+ * question of each run is fumbled twice on purpose, to exercise the
+ * "not quite" path too.
  *
- *   node tools/playthrough.mjs            # all games
- *   SHOTS=1 node tools/playthrough.mjs    # keep the results screenshots
+ *   node tools/playthrough.mjs                  # everything
+ *   node tools/playthrough.mjs see-saw frog-hop/3
+ *   SHOTS=1 node tools/playthrough.mjs          # keep the results screenshots
  */
 
-import { createRequire } from 'node:module';
-import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { start } from './serve.mjs';
+import { launch, openPage, veteran } from './browser.mjs';
+import { GAMES } from '../src/games/index.js';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const SHOT_DIR = join(ROOT, '.smoke');
+const SHOT_DIR = join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), '.smoke');
 const PORT = Number(process.env.PORT) || 8124;
 const WRITE_SHOTS = process.env.SHOTS === '1';
+const LANES = Number(process.env.LANES) || 3;
 
-function loadPlaywright() {
-  const require = createRequire(import.meta.url);
-  try { return require('playwright'); } catch (_) { /* fall through */ }
-  const globalRoot = execFileSync('npm', ['root', '-g'], { encoding: 'utf8' }).trim();
-  return createRequire(join(globalRoot, 'x.js'))('playwright');
-}
-const { chromium } = loadPlaywright();
-
-/**
- * How to answer one question, per game — expressed against the live game object
- * so it stays honest if the internals change (a broken solver fails loudly).
- * Each returns true while there is still work to do.
- */
-const SOLVERS = {
-  'counting-critters': (g) => { g.answer(g.count); return true; },
-  'balloon-math': (g) => {
-    const b = g.balloons.find((x) => x.value === g.sum.answer && !x.popped);
-    if (b) g.pop(b);
-    return !!b;
-  },
-  'cookie-kitchen': (g) => {
-    let guard = 0;
-    while (g.filled < g.target && guard++ < 40) {
-      const c = g.cookies.find((x) => x.slot < 0);
-      if (!c) break;
-      const slot = g.slots.findIndex((_, i) => !g.cookies.some((o) => o.slot === i));
-      if (slot < 0) break;
-      c.slot = slot;
-    }
-    g.refreshBake();
-    g.bake();
-    return true;
-  },
-  'sound-safari': (g) => { g.choose(g.answer); return true; },
-  'word-builder': (g) => {
-    let guard = 0;
-    while (g.slots.some((s) => !s.tile) && guard++ < 12) {
-      const slot = g.slots.find((s) => !s.tile);
-      const tile = g.tiles.find((t) => t.slot < 0 && t.letter === slot.letter);
-      if (!tile) break;
-      tile.x = slot.x + slot.w / 2;
-      tile.y = slot.y + slot.h / 2;
-      g.dropTile(tile);
-    }
-    return true;
-  },
-  // Write the glyph one stroke at a time, the way the child has to.
-  'letter-trace': (g) => {
-    let guard = 0;
-    while (!g.busy && guard++ < 12) {
-      const before = g.strokeIndex;
-      g.finishStroke();
-      if (g.strokeIndex === before) return false;
-    }
-    return true;
-  },
-  'memory-match': (g) => {
-    const a = g.cards.find((c) => !c.matched);
-    if (!a) return false;
-    const b = g.cards.find((c) => c !== a && !c.matched && c.key === a.key);
-    if (!b) return false;
-    g.reveal(a);
-    g.reveal(b);
-    return true;
-  },
-  'pattern-party': (g) => {
-    const i = g.choices.findIndex((c) => g.sameToken(c, g.answer));
-    if (i < 0) return false;
-    g.choose(i);
-    return true;
-  },
-  'jigsaw-garden': (g) => {
-    const p = g.pieces.find((x) => !x.locked);
-    if (!p) return false;
-    p.x = p.homeX;
-    p.y = p.homeY;
-    g.dropPiece(p);
-    return true;
-  },
-};
-
-const { GAMES } = await import('../src/games/index.js');
-const only = process.argv.slice(2).filter((a) => !a.startsWith('-'));
-const targets = only.length ? GAMES.filter((g) => only.includes(g.id)) : GAMES;
+const only = process.argv.slice(2);
+const runs = GAMES.flatMap((g) => g.levels.map((_, i) => `${g.id}/${i + 1}`))
+  .filter((r) => !only.length || only.some((o) => r === o || r.startsWith(`${o}/`)));
 
 const server = await start(PORT);
-const base = `http://127.0.0.1:${PORT}/`;
+const browser = await launch();
 if (WRITE_SHOTS) mkdirSync(SHOT_DIR, { recursive: true });
-
-// Playwright's downloaded Chromium builds are unsigned, so Santa kills them on
-// launch. Prefer the signed Google Chrome install (channel: 'chrome'); an
-// explicit CHROMIUM_PATH still wins for anyone running elsewhere.
-const browser = await chromium.launch({
-  ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : { channel: 'chrome' }),
-  args: ['--autoplay-policy=no-user-gesture-required'],
-});
-const context = await browser.newContext({
-  viewport: { width: 1180, height: 820 }, deviceScaleFactor: 2, hasTouch: true, locale: 'en-US',
-});
-const page = await context.newPage();
-
 const failures = [];
 const fail = (m) => { failures.push(m); console.error('  ✗ ' + m); };
 
-let errors = [];
-page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
-page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
-
-for (const entry of targets) {
-  errors = [];
-  await page.goto(`${base}#/play/${entry.id}`, { waitUntil: 'load' });
-  await page.waitForFunction(() => window.kindercade?.game, null, { timeout: 8000 }).catch(() => {});
-  await page.waitForTimeout(900);
-
-  const solver = SOLVERS[entry.id];
-  if (!solver) { fail(`${entry.id}: no solver defined`); continue; }
-
-  // Answer, wait for the game's own animation gap, repeat. The bound is
-  // wall-clock rather than steps, because the games with long spoken feedback
-  // (phonics especially) legitimately dwell for seconds between rounds.
-  const deadline = Date.now() + 120000;
-  let steps = 0;
-  let finished = false;
-  while (Date.now() < deadline) {
-    steps++;
-    const state = await page.evaluate(`(() => {
-      const g = window.kindercade.game;
-      if (!g) return { gone: true };
-      if (g.results?.visible) return { done: true, stars: g.results.stars, title: g.results.title };
-      if (g.busy) return { busy: true };
-      return { ready: true };
-    })()`);
-    if (state.gone) { fail(`${entry.id}: game vanished mid-round`); break; }
-    if (state.done) {
-      finished = true;
-      console.log(`  ✓ ${entry.id} finished in ${steps} steps — ${state.stars}★ "${state.title}"`);
-      break;
-    }
-    if (state.ready) {
-      const ok = await page.evaluate(`(${solver.toString()})(window.kindercade.game)`);
-      if (ok === false) { await page.waitForTimeout(400); }
-    }
-    await page.waitForTimeout(500);
-  }
-
-  if (!finished) fail(`${entry.id}: never reached the results panel (${steps} steps, timed out)`);
-  else if (WRITE_SHOTS) {
-    await page.waitForTimeout(1600);   // let the stars land
-    await page.screenshot({ path: join(SHOT_DIR, `results-${entry.id}.png`) });
-  }
-
-  // A finished round must have banked stars.
-  const stars = await page.evaluate(`window.kindercade.progress.starsFor(${JSON.stringify(entry.id)})`);
-  if (finished && !(stars > 0)) fail(`${entry.id}: finished but recorded ${stars} stars`);
-
-  errors.forEach((e) => fail(`${entry.id} ${e}`));
+/** Runs in the page: what should a finger do now? */
+function nextMove(fumble) {
+  const { game: g, engine } = window.kindercade;
+  if (!g || g.meta.id === 'home') return { gone: true };
+  if (g.results?.ready) return { done: true, stars: g.results.stars, mistakes: g.mistakes };
+  const px = (t) => engine.client(g.at(t));
+  if (g.results?.gift) return { path: [px(g.results.gift)] };
+  if (g.busy) return {};
+  const move = g.solution();
+  if (!move) return {};
+  const wrong = fumble && g.choices?.find((c) => c !== move.tap);
+  const path = wrong ? [px(wrong)] : (move.drag || [move.tap]).map(px);
+  const under = document.elementFromPoint(path[0].x, path[0].y);
+  return { path, fumbled: !!wrong, blocked: under?.id !== 'game-canvas' && (under?.id || under?.className || 'off screen') };
 }
 
-const total = await page.evaluate('window.kindercade.progress.totalStars');
-const stickers = await page.evaluate('window.kindercade.progress.stickers.length');
-console.log(`\n  total stars: ${total}, stickers unlocked: ${stickers}`);
-if (targets.length === GAMES.length && !(total > 0)) fail('no stars were recorded at all');
+async function play(run) {
+  // The narrowest shape we support: if it is reachable at 4:3 it is reachable anywhere.
+  const page = await openPage(browser, { width: 640, height: 480, save: veteran(GAMES) });
+  await page.goto(`http://127.0.0.1:${PORT}/#/play/${run}`);
+  await page.waitForFunction(() => window.kindercade?.game, null, { timeout: 30000 });
+  // Fast-forward, and draw only now and then: software GL is the slow part.
+  await page.evaluate(() => {
+    const { engine } = window.kindercade;
+    const render = engine.render.bind(engine);
+    let frame = 0;
+    engine.render = () => { if (frame++ % 20 === 0) render(); };
+    engine.timeScale = 5;
+  });
 
+  const deadline = Date.now() + 240000;
+  let fumbles = 0, moves = 0, result = null;
+  while (Date.now() < deadline && !page.errors.length) {
+    const m = await page.evaluate(nextMove, fumbles < 2);
+    if (m.gone) { fail(`${run}: fell back to the home screen`); break; }
+    if (m.done) { result = m; break; }
+    if (m.blocked) { fail(`${run}: the next thing to touch is under "${m.blocked}"`); break; }
+    if (m.path) {
+      if (m.fumbled) fumbles++;
+      moves++;
+      await page.mouse.move(m.path[0].x, m.path[0].y);
+      await page.mouse.down();
+      for (const p of m.path.slice(1)) await page.mouse.move(p.x, p.y, { steps: m.path.length > 2 ? 1 : 5 });
+      await page.mouse.up();
+    }
+    await page.waitForTimeout(120);
+  }
+
+  page.errors.forEach((e) => fail(`${run} ${e}`));
+  if (result) {
+    const [id, level] = run.split('/');
+    const saved = await page.evaluate(([i, l]) => {
+      const { progress } = window.kindercade;
+      return { stars: progress.starsFor(i, l), toys: progress.toys.length };
+    }, [id, Number(level)]);
+    if (result.mistakes !== fumbles) fail(`${run}: ${result.mistakes} mistakes counted, but only ${fumbles} were made`);
+    else if (saved.stars !== result.stars) fail(`${run}: showed ${result.stars}★ but saved ${saved.stars}★`);
+    else if (saved.toys !== 1) fail(`${run}: the first game should end in a present`);
+    else console.log(`  ✓ ${run} — ${moves} moves, ${result.stars}★`);
+    if (WRITE_SHOTS) await page.screenshot({ path: join(SHOT_DIR, `results-${id}-${level}.png`) });
+  } else if (!page.errors.length && Date.now() >= deadline) {
+    fail(`${run}: never reached the prize screen (${moves} moves)`);
+    await page.screenshot({ path: join(SHOT_DIR, `stuck-${run.replace('/', '-')}.png`) });
+  }
+  await page.context().close();
+}
+
+const queue = [...runs];
+await Promise.all(Array.from({ length: LANES }, async () => { while (queue.length) await play(queue.shift()); }));
 await browser.close();
 server.close();
 
@@ -194,4 +112,4 @@ if (failures.length) {
   console.error(`✗ ${failures.length} playthrough failure(s)`);
   process.exit(1);
 }
-console.log(`✓ played ${targets.length} game(s) through to the results screen`);
+console.log(`✓ played ${runs.length} level(s) through to the prize screen`);

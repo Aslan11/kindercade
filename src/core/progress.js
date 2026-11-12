@@ -4,56 +4,111 @@
  * Deliberately forgiving: nothing here can ever throw (Safari private mode
  * disables storage), and a corrupt blob just resets to defaults rather than
  * bricking the arcade.
+ *
+ * Each child is a *player* with their own buddy, stars and toys. Two things
+ * are earned. **Stars** are a personal best for each level of each game.
+ * **Presents** come from the star jar, which every finished game pours into —
+ * replays included — so a favourite game never stops paying out.
  */
-
-import { spriteNameFor } from './sprites.js';
 
 const KEY = 'kindercade.save.v1';
 
-const DEFAULTS = {
+/** Level 1 of every game is pitched at a three-year-old; older children start on 2. */
+export const LEVELS = 4;
+export const startLevel = (age) => (age <= 3 ? 1 : 2);
+export const MAX_PLAYERS = 4;
+export const BUDDIES = ['ziggy', 'momo', 'bolt', 'fizz', 'sprout', 'nova'];
+/** Stars it takes to fill the jar and earn a present. */
+export const JAR_SIZE = 5;
+
+/** Presents a buddy can wear. */
+export const HATS = ['party-hat', 'crown', 'cap', 'hat', 'wizard-hat', 'chef-hat', 'sun-hat'];
+
+/** Everything that can come out of a present (model names). */
+export const TOYS = [
+  'panda', 'lion', 'frog', 'octopus', 'unicorn', 'bee', 'butterfly', 'whale', 'dinosaur', 'penguin', 'owl', 'fox',
+  'bunny', 'elephant', 'monkey', 'giraffe', 'koala', 'tiger', 'turtle', 'duck', 'ladybug', 'crab', 'zebra', 'robot',
+  'rainbow', 'star', 'clover', 'sunflower', 'cactus', 'planet', 'watermelon', 'donut', 'cupcake', 'cookie',
+  'rocket', 'balloon', 'guitar', 'ball', 'castle', 'kite', 'train', 'plane', 'gem', 'trophy', 'xylophone',
+  ...HATS,
+];
+
+const newPlayer = (o = {}) => ({
+  name: '',              // optional; the voice uses it to say hello
+  buddy: '',             // '' until the child has picked one
+  age: 5,
+  toys: [],              // model names, in the order they were unwrapped
+  hat: '',               // what the buddy is wearing
+  jar: JAR_SIZE - 1,     // nearly full, so the very first game ends in a present
+  games: {},             // id -> { levels: [best stars per level], level: highest unlocked }
+  ...o,
+});
+
+const fresh = () => ({
   sound: true,
+  music: true,
   voice: true,
   voiceURI: '',          // '' = let the audio kit pick the best one it can find
   speechRate: 1,         // global speed trim for the talking voice
-  stickers: [],          // sprite names collected into the sticker book
-  games: {},             // id -> { stars, best, plays, level }
-  totalStars: 0,
-  lastPlayed: null,
+  players: [newPlayer()],
+  current: 0,
+});
+
+const randomNewToy = (owned) => {
+  const pool = TOYS.filter((t) => !owned.includes(t));
+  return pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
 };
+
+/** A save from the one-player, three-level, sticker-book era becomes player one. */
+function migrate({ games = {}, stickers = [], totalStars, lastPlayed, ...settings }) {
+  const player = newPlayer();
+  for (const [id, g] of Object.entries(games)) {
+    if (!g.plays) continue;
+    // The old levels 1–3 are now 2–4, and shared a single best score.
+    const level = Math.min(LEVELS, (g.level || 1) + 1);
+    const cleared = Math.max(2, level - 1);
+    player.games[id] = { level, levels: Array.from({ length: LEVELS }, (_, i) => (i >= 1 && i < cleared ? g.stars || 0 : 0)) };
+  }
+  const earned = [...new Set(stickers)];
+  player.toys = earned.filter((t) => TOYS.includes(t));
+  // A sticker with no matching toy is swapped, so the collection never shrinks.
+  while (player.toys.length < Math.min(earned.length, TOYS.length)) player.toys.push(randomNewToy(player.toys));
+  // One switch used to silence everything; a muted arcade stays muted.
+  const quiet = settings.sound === false ? { music: false, voice: false } : {};
+  return { ...fresh(), ...settings, ...quiet, players: [player] };
+}
 
 function load() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return { ...DEFAULTS };
+    if (!raw) return fresh();
     const data = JSON.parse(raw);
-    // Saves from the emoji era stored stickers as emoji characters; migrate
-    // them to sprite names so the collection survives the art change.
-    const stickers = [...new Set(
-      [...(data.stickers || [])].map((s) => spriteNameFor(s) || s).filter((s) => STICKERS.includes(s)),
-    )];
-    return { ...DEFAULTS, ...data, games: { ...(data.games || {}) }, stickers };
+    if (!Array.isArray(data.players) || !data.players.length) return migrate(data);
+    const players = data.players.map((p) => newPlayer(p));
+    return { ...fresh(), ...data, players, current: players[data.current] ? data.current : 0 };
   } catch (_) {
-    return { ...DEFAULTS };
+    return fresh();
   }
 }
 
 class Progress {
   constructor() {
     this.data = load();
-    this._listeners = new Set();
+    // Write a migrated save straight back, so swapped toys stay the same toys.
+    this.save();
   }
 
   save() {
     try { localStorage.setItem(KEY, JSON.stringify(this.data)); } catch (_) { /* storage unavailable */ }
-    this._listeners.forEach((fn) => fn(this.data));
   }
-
-  onChange(fn) { this._listeners.add(fn); return () => this._listeners.delete(fn); }
 
   /* ------------------------------------------------------------- settings */
 
   get sound() { return this.data.sound !== false; }
   set sound(v) { this.data.sound = !!v; this.save(); }
+
+  get music() { return this.data.music !== false; }
+  set music(v) { this.data.music = !!v; this.save(); }
 
   get voice() { return this.data.voice !== false; }
   set voice(v) { this.data.voice = !!v; this.save(); }
@@ -65,69 +120,77 @@ class Progress {
   get speechRate() { return this.data.speechRate || 1; }
   set speechRate(v) { this.data.speechRate = Number(v) || 1; this.save(); }
 
+  /* -------------------------------------------------------------- players */
+
+  get players() { return this.data.players; }
+  get player() { return this.data.players[this.data.current]; }
+  switchTo(i) { this.data.current = i; this.save(); }
+
+  /** Fill in the waiting first player, or add another. */
+  addPlayer({ buddy, age }) {
+    if (this.player.buddy) this.data.current = this.players.push(newPlayer()) - 1;
+    Object.assign(this.player, { buddy, age });
+    this.save();
+  }
+
+  /** Forget the current player altogether. */
+  removePlayer() {
+    this.players.splice(this.data.current, 1);
+    if (!this.players.length) this.players.push(newPlayer());
+    this.switchTo(0);
+  }
+
+  get buddy() { return this.player.buddy || BUDDIES[0]; }
+
+  get name() { return this.player.name; }
+  set name(v) { this.player.name = String(v).trim().slice(0, 14); this.save(); }
+
+  get age() { return this.player.age; }
+  set age(v) { this.player.age = Number(v) || 5; this.save(); }
+
+  get hat() { return this.player.hat; }
+  set hat(v) { this.player.hat = v; this.save(); }
+
+  get jar() { return this.player.jar; }
+  get toys() { return this.player.toys; }
+
   /* ----------------------------------------------------------- game state */
 
-  game(id) {
-    if (!this.data.games[id]) this.data.games[id] = { stars: 0, best: 0, plays: 0, level: 1 };
-    return this.data.games[id];
+  /** Highest level the child has unlocked in a game. */
+  levelFor(id) { return Math.max(this.player.games[id]?.level || 1, startLevel(this.age)); }
+
+  /** Best stars on one level, or across the whole game when `level` is omitted. */
+  starsFor(id, level = 0) {
+    const levels = this.player.games[id]?.levels || [];
+    return level ? levels[level - 1] || 0 : levels.reduce((a, b) => a + b, 0);
   }
 
-  /** Highest level the child has unlocked in a game (levels unlock as they win). */
-  levelFor(id) { return this.game(id).level || 1; }
-
-  unlockLevel(id, level) {
-    const g = this.game(id);
-    if (level > (g.level || 1)) { g.level = level; this.save(); }
-  }
+  get totalStars() { return Object.keys(this.player.games).reduce((s, id) => s + this.starsFor(id), 0); }
 
   /**
-   * Record the result of a finished round.
-   * @returns {{newStars:number, totalStars:number, sticker:string|null}}
+   * Record a finished game. The present is banked here, before it is
+   * unwrapped, so leaving mid-celebration never loses it.
    */
-  recordRound(id, { stars = 0, score = 0 } = {}) {
-    const g = this.game(id);
-    g.plays = (g.plays || 0) + 1;
-    if (score > (g.best || 0)) g.best = score;
-    // Stars are a personal best, not a running total, so replaying can only help.
-    const gained = Math.max(0, stars - (g.stars || 0));
-    if (stars > (g.stars || 0)) g.stars = stars;
-    this.data.totalStars = Object.values(this.data.games).reduce((s, x) => s + (x.stars || 0), 0);
-    this.data.lastPlayed = id;
-    const sticker = this.maybeAwardSticker();
+  recordRound(id, level, stars) {
+    const p = this.player;
+    const open = this.levelFor(id);
+    const g = p.games[id] || (p.games[id] = { levels: new Array(LEVELS).fill(0), level: 1 });
+    g.levels[level - 1] = Math.max(g.levels[level - 1] || 0, stars);
+    const unlocked = stars >= 2 && level === open && level < LEVELS;
+    if (unlocked) g.level = level + 1;
+
+    const jarBefore = p.jar;
+    let toy = null;
+    p.jar += stars;
+    const filled = p.jar >= JAR_SIZE;
+    if (filled) {
+      p.jar -= JAR_SIZE;
+      toy = randomNewToy(p.toys);
+      if (toy) p.toys.push(toy);
+    }
     this.save();
-    return { newStars: gained, totalStars: this.data.totalStars, sticker };
-  }
-
-  starsFor(id) { return this.game(id).stars || 0; }
-  get totalStars() { return this.data.totalStars || 0; }
-
-  /* ------------------------------------------------------------- stickers */
-
-  /** One new sticker for every 3 stars earned — a steady, visible reward. */
-  maybeAwardSticker() {
-    const deserved = Math.floor(this.totalStars / 3);
-    if (this.data.stickers.length >= deserved) return null;
-    const pool = STICKERS.filter((s) => !this.data.stickers.includes(s));
-    if (!pool.length) return null;
-    const sticker = pool[Math.floor(Math.random() * pool.length)];
-    this.data.stickers.push(sticker);
-    return sticker;
-  }
-
-  get stickers() { return this.data.stickers; }
-
-  reset() {
-    this.data = { ...DEFAULTS, games: {}, stickers: [] };
-    this.save();
+    return { unlocked, jarBefore, jarAfter: p.jar, filled, toy };
   }
 }
-
-/** The sticker book: 36 collectables (sprite names), unlocked 1 per 3 stars. */
-export const STICKERS = [
-  'fox', 'panda', 'lion', 'frog', 'octopus', 'unicorn', 'bee', 'butterfly', 'whale', 'dinosaur', 'penguin', 'owl',
-  'rainbow', 'star', 'sparkle-star', 'clover', 'sunflower', 'blossom', 'watermelon', 'donut', 'cupcake', 'cookie',
-  'rocket', 'balloon', 'palette', 'guitar', 'ball', 'castle', 'roller-skate', 'kite', 'carousel', 'puzzle-piece',
-  'gem', 'crystal-ball', 'trophy', 'crown',
-];
 
 export const progress = new Progress();

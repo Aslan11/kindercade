@@ -1,264 +1,190 @@
 /**
- * Particle effects and screen juice.
+ * Particles: the layer that makes a right answer *feel* like a win.
  *
- * This is the layer that makes a correct answer *feel* like a win. Every game
- * gets one `FX` instance on `this.fx`, stepped and drawn by the engine.
- *
- * Physics stays continuous; the 16-bit look happens at draw time — positions
- * snap to the texel grid, rotations quantize to TAU/24, fades step in eighths,
- * and every pictorial particle blits from the sprite atlas (confetti pieces,
- * stars, sparkles) with pixel-square puffs and pixel-ring shockwaves for the
- * rest.
+ * Everything lives in the screen-space overlay scene, drawn over the game, in
+ * a handful of instanced meshes — so a hundred bits of confetti cost one draw
+ * call. Positions are overlay units (100 logical pixels each).
  */
 
-import { TAU, rand, randInt, pick, clamp } from './util.js';
-import { starPath, drawEmoji, PX, px, stepAlpha, snapAngle, pixelRing } from './art.js';
-import { drawSprite } from './sprites.js';
+import * as THREE from './three.js';
+import { Shapes, pillowGeo } from './kit.js';
+import { text3d } from './glyphs.js';
+import { TAU, rand, pick } from './util.js';
 
-const CONFETTI_COLORS = ['#ff6b8b', '#ffc93c', '#4cc9f0', '#3ddc97', '#9b6cff', '#ff8fd0', '#ff9f1c'];
+export const PARTY = ['#ff6b8b', '#ffc93c', '#4cc9f0', '#3ddc97', '#9b6cff', '#ff8fd0', '#ff9f1c'];
+const CAP = 220;
+const _o = new THREE.Object3D();
+const _c = new THREE.Color();
 
-/** The four paper-scrap sprites in the atlas — one is picked per particle. */
-const CONFETTI_SPRITES = ['confetti-rect', 'confetti-ribbon', 'confetti-star', 'confetti-dot'];
+class Pool {
+  constructor(scene, geo, material) {
+    this.mesh = new THREE.InstancedMesh(geo, material, CAP);
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.setColorAt(0, _c.set('#ffffff'));
+    this.mesh.frustumCulled = false;
+    this.mesh.count = 0;
+    this.mesh.renderOrder = 5;
+    this.list = [];
+    scene.add(this.mesh);
+  }
 
-class Particle {
-  constructor(cfg) { Object.assign(this, cfg); this.age = 0; }
-  get dead() { return this.age >= this.life; }
+  emit(p) {
+    if (this.list.length >= CAP) this.list.shift();
+    this.list.push({ age: 0, z: rand(0.4, 1.2), vz: 0, rx: rand(0, TAU), rz: rand(0, TAU), sx: 0, sz: 0, drag: 1.6, grav: 14, grow: 0, ...p });
+  }
+
+  step(dt) {
+    if (!this.list.length && !this.mesh.count) return;
+    let n = 0;
+    for (const p of this.list) {
+      p.age += dt;
+      if (p.age >= p.life) continue;
+      const drag = Math.exp(-p.drag * dt);
+      p.vx *= drag;
+      p.vy = p.vy * drag - p.grav * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.rx += p.sx * dt;
+      p.rz += p.sz * dt;
+      const t = p.age / p.life;
+      // Pop in fast, shrink away at the end — no transparency to sort.
+      const k = p.size * (1 + p.grow * t) * Math.min(1, t * 14) * Math.min(1, (1 - t) * 3.5);
+      _o.position.set(p.x, p.y, p.z);
+      _o.rotation.set(p.rx, 0, p.rz);
+      _o.scale.setScalar(k);
+      _o.updateMatrix();
+      this.mesh.setMatrixAt(n, _o.matrix);
+      this.mesh.setColorAt(n, _c.set(p.color));
+      this.list[n++] = p;
+    }
+    this.list.length = n;
+    this.mesh.count = n;
+    this.mesh.instanceMatrix.needsUpdate = true;
+    this.mesh.instanceColor.needsUpdate = true;
+  }
 }
 
 export class FX {
-  constructor() {
-    this.particles = [];
-    this.shake = 0;
-    this.shakeDecay = 5;
+  constructor(scene) {
+    this.scene = scene;
+    const lit = new THREE.MeshToonMaterial();
+    const bright = new THREE.MeshBasicMaterial();
+    this.paper = new Pool(scene, new THREE.BoxGeometry(1, 0.6, 0.06), lit);
+    this.stars = new Pool(scene, pillowGeo(Shapes.star(0.6, 0.32, 5, 0.1), 0.3, { curve: 2, rings: 2 }), lit);
+    this.hearts = new Pool(scene, pillowGeo(Shapes.heart(0.5), 0.34, { curve: 5, rings: 3 }), lit);
+    this.balls = new Pool(scene, new THREE.SphereGeometry(0.5, 10, 8), lit);
+    this.twinkles = new Pool(scene, new THREE.ShapeGeometry(Shapes.star(0.7, 0.13, 4, 0.02), 1), bright);
+    this.pools = [this.paper, this.stars, this.hearts, this.balls, this.twinkles];
+    this.ringGeo = new THREE.RingGeometry(0.86, 1, 40);
+    this.rings = [];
     this.floaters = [];
-    this.gravity = 1600;
+    this.shake = 0;
   }
 
-  clear() { this.particles.length = 0; this.floaters.length = 0; this.shake = 0; }
+  clear() {
+    for (const p of this.pools) p.list.length = 0;
+    for (const r of this.rings) r.age = r.life;
+    for (const f of this.floaters) f.age = f.life;
+    this.shake = 0;
+  }
 
-  /* -------------------------------------------------------------- emitters */
-
-  /** Big celebratory burst — use on level complete. */
-  confetti(x, y, count = 60, { spread = TAU, speed = [320, 900], up = false } = {}) {
-    for (let i = 0; i < count; i++) {
-      const a = up ? -Math.PI / 2 + rand(-0.7, 0.7) : rand(0, spread);
-      const sp = rand(speed[0], speed[1]);
-      this.particles.push(new Particle({
-        kind: 'confetti', x, y,
-        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - (up ? rand(200, 500) : 0),
-        w: rand(10, 20), h: rand(14, 26),
-        rot: rand(0, TAU), spin: rand(-9, 9),
-        color: pick(CONFETTI_COLORS), sprite: pick(CONFETTI_SPRITES),
-        life: rand(1.2, 2.2), drag: 0.62, grav: 1,
-      }));
+  /** Throw `n` particles outward from `at`, each customised by `make()`. */
+  _burst(pool, at, n, [lo, hi], make, up = 0) {
+    for (let i = 0; i < n; i++) {
+      const a = up ? Math.PI / 2 + rand(-up, up) : rand(0, TAU);
+      const v = rand(lo, hi);
+      pool.emit({ x: at.x, y: at.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, ...make() });
     }
   }
 
-  /** Confetti raining from the top of the frame across the whole width. */
-  confettiRain(width, count = 70) {
-    for (let i = 0; i < count; i++) {
-      this.particles.push(new Particle({
-        kind: 'confetti',
-        x: rand(0, width), y: rand(-420, -20),
-        vx: rand(-70, 70), vy: rand(120, 320),
-        w: rand(10, 20), h: rand(14, 26),
-        rot: rand(0, TAU), spin: rand(-7, 7),
-        color: pick(CONFETTI_COLORS), sprite: pick(CONFETTI_SPRITES),
-        life: rand(2.4, 4), drag: 0.9, grav: 0.22,
-      }));
+  confetti(at, n = 40, { up = 0, colors = PARTY } = {}) {
+    this._burst(this.paper, at, n, [3, 11], () => ({
+      size: rand(0.13, 0.22), color: pick(colors), life: rand(1.2, 2.1), sx: rand(-12, 12), sz: rand(-8, 8), drag: 2.4, grav: 9,
+    }), up);
+  }
+
+  /** Confetti drifting down across the whole screen. */
+  rain(halfW, halfH, n = 110) {
+    for (let i = 0; i < n; i++) {
+      this.paper.emit({
+        x: rand(-halfW, halfW), y: halfH + rand(0.2, 5), vx: rand(-0.8, 0.8), vy: rand(-3, -1.5),
+        size: rand(0.14, 0.24), color: pick(PARTY), life: rand(3, 4.6), sx: rand(-9, 9), sz: rand(-5, 5), drag: 0.9, grav: 3,
+      });
     }
   }
 
-  /** Small twinkle puff — the everyday "correct!" accent. */
-  sparkle(x, y, count = 14, { color = '#ffe9a8', spread = 130 } = {}) {
-    for (let i = 0; i < count; i++) {
-      const a = rand(0, TAU);
-      const sp = rand(60, spread);
-      this.particles.push(new Particle({
-        kind: 'sparkle', x, y,
-        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
-        r: rand(6, 16), rot: rand(0, TAU), spin: rand(-4, 4),
-        color, life: rand(0.5, 1.0), drag: 0.35, grav: 0.05,
-      }));
-    }
+  starBurst(at, n = 10, color = null) {
+    this._burst(this.stars, at, n, [4, 9], () => ({
+      size: rand(0.22, 0.4), color: color || pick(['#ffd23c', '#ffe27a', '#ffb52e']), life: rand(0.8, 1.3), rx: 0, sz: rand(-8, 8),
+    }), 1.2);
   }
 
-  /** Stars fountaining upward from a point. */
-  starBurst(x, y, count = 18, color = '#ffc93c') {
-    for (let i = 0; i < count; i++) {
-      const a = -Math.PI / 2 + rand(-1.15, 1.15);
-      const sp = rand(320, 760);
-      this.particles.push(new Particle({
-        kind: 'star', x, y,
-        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
-        r: rand(10, 22), rot: rand(0, TAU), spin: rand(-8, 8),
-        color, life: rand(0.9, 1.6), drag: 0.7, grav: 1,
-      }));
-    }
+  love(at, n = 6) {
+    this._burst(this.hearts, at, n, [1.2, 3], () => ({
+      size: rand(0.24, 0.4), color: pick(['#ff4d78', '#ff8fb0', '#ff6b8b']), life: rand(1, 1.6), rx: 0, rz: rand(-0.4, 0.4), grav: -1.6, drag: 1.8,
+    }), 0.9);
   }
 
-  /** Ring shockwave — a satisfying "pop" for balloons and bubbles. */
-  ring(x, y, { color = '#ffffff', r0 = 10, r1 = 140, life = 0.45, width = 10 } = {}) {
-    this.particles.push(new Particle({ kind: 'ring', x, y, color, r0, r1, width, life, vx: 0, vy: 0 }));
-  }
-
-  /** Shards flying off a popped object. */
-  burstEmoji(x, y, ch, count = 8, size = 34) {
-    for (let i = 0; i < count; i++) {
-      const a = rand(0, TAU);
-      const sp = rand(180, 520);
-      this.particles.push(new Particle({
-        kind: 'emoji', x, y, ch, size,
-        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 160,
-        rot: rand(0, TAU), spin: rand(-7, 7),
-        life: rand(0.7, 1.3), drag: 0.75, grav: 1,
-      }));
-    }
-  }
-
-  /** Blocky dust puff — good for landings and "poof, it's gone". */
-  puff(x, y, count = 10, color = 'rgba(255,255,255,0.9)') {
-    for (let i = 0; i < count; i++) {
-      const a = rand(0, TAU);
-      this.particles.push(new Particle({
-        kind: 'puff', x, y,
-        vx: Math.cos(a) * rand(30, 150), vy: Math.sin(a) * rand(30, 150) - 40,
-        r: rand(10, 26), color, life: rand(0.4, 0.8), drag: 0.3, grav: -0.1,
-      }));
-    }
-  }
-
-  /** Trail dot — call each frame while something is being dragged. */
-  trail(x, y, color = '#ffffff') {
-    if (this.particles.length > 400) return;
-    this.particles.push(new Particle({
-      kind: 'puff', x: x + rand(-6, 6), y: y + rand(-6, 6),
-      vx: rand(-20, 20), vy: rand(-20, 20),
-      r: rand(4, 10), color, life: 0.35, drag: 0.2, grav: -0.05,
+  sparkle(at, n = 12, { color = '#fff3b0', spread = 2.2 } = {}) {
+    this._burst(this.twinkles, at, n, [0.4, spread], () => ({
+      size: rand(0.16, 0.36), color, life: rand(0.45, 0.9), rx: 0, sz: rand(-3, 3), grav: 0.3, drag: 2, z: 1.4,
     }));
   }
 
-  /** Rising text, e.g. "+1" or "Nice!". */
-  floatText(x, y, text, { color = '#ffffff', size = 46, life = 1.1, rise = 110, stroke = '#2c2340' } = {}) {
-    this.floaters.push({ x, y, text, color, size, life, maxLife: life, rise, stroke, age: 0 });
+  puff(at, n = 8, { color = '#ffffff', spread = 1.8, size = 0.3, rise = 1 } = {}) {
+    this._burst(this.balls, at, n, [0.4, spread], () => ({
+      size: rand(size * 0.6, size * 1.2), color, life: rand(0.45, 0.85), grav: -rise, drag: 3, grow: 0.9,
+    }));
   }
 
-  /** Camera shake in logical pixels. Keep it gentle — this is a toddler's game. */
-  addShake(amount = 8) { this.shake = Math.min(22, this.shake + amount); }
+  crumbs(at, n = 8, color = '#c98f4c') {
+    this._burst(this.balls, at, n, [1.5, 4], () => ({ size: rand(0.07, 0.14), color, life: rand(0.5, 0.8) }));
+  }
 
-  /* ------------------------------------------------------------------ step */
+  /** An expanding shockwave — the "pop". */
+  ring(at, { color = '#ffffff', r = 1.4, life = 0.4 } = {}) {
+    let ring = this.rings.find((x) => x.age >= x.life);
+    if (!ring) {
+      ring = { mesh: new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({ transparent: true, depthTest: false })) };
+      ring.mesh.renderOrder = 6;
+      this.scene.add(ring.mesh);
+      this.rings.push(ring);
+    }
+    Object.assign(ring, { age: 0, life, r });
+    ring.mesh.material.color.set(color);
+    ring.mesh.position.set(at.x, at.y, 0.5);
+    ring.mesh.visible = true;
+  }
+
+  /** A number or letter that pops up and floats away. */
+  floatText(at, str, { color = '#ffffff', size = 0.7, life = 1.1 } = {}) {
+    const mesh = text3d(str, { height: size, color, weight: 0.13, shadow: false });
+    mesh.position.set(at.x, at.y, 1.6);
+    this.scene.add(mesh);
+    this.floaters.push({ mesh, age: 0, life, y: at.y });
+  }
+
+  /** Camera shake. Keep it gentle — this is a five-year-old's game. */
+  addShake(k = 1) { this.shake = Math.min(1.5, this.shake + k); }
 
   step(dt) {
-    for (const p of this.particles) {
-      p.age += dt;
-      const drag = Math.exp(-(p.drag ?? 0.5) * dt * 4);
-      p.vx *= drag;
-      p.vy = p.vy * drag + this.gravity * (p.grav ?? 1) * dt;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      if (p.spin) p.rot += p.spin * dt;
+    for (const p of this.pools) p.step(dt);
+    for (const r of this.rings) {
+      if (!r.mesh.visible) continue;
+      r.age += dt;
+      const t = Math.min(1, r.age / r.life);
+      r.mesh.scale.setScalar(0.1 + r.r * (1 - (1 - t) ** 3));
+      r.mesh.material.opacity = (1 - t) * 0.9;
+      r.mesh.visible = t < 1;
     }
-    if (this.particles.length) this.particles = this.particles.filter((p) => !p.dead);
-
-    for (const f of this.floaters) f.age += dt;
-    if (this.floaters.length) this.floaters = this.floaters.filter((f) => f.age < f.life);
-
-    this.shake = Math.max(0, this.shake - this.shake * this.shakeDecay * dt - 8 * dt);
-  }
-
-  /** Shake offset the engine applies before drawing the game. */
-  shakeOffset() {
-    if (this.shake <= 0.1) return { x: 0, y: 0 };
-    return { x: rand(-this.shake, this.shake), y: rand(-this.shake, this.shake) };
-  }
-
-  /* ------------------------------------------------------------------ draw */
-
-  draw(ctx) {
-    for (const p of this.particles) {
-      const t = p.age / p.life;
-      // Steppy 16-bit fade — alpha quantized to eighths.
-      const alpha = stepAlpha(t < 0.75 ? 1 : 1 - (t - 0.75) / 0.25);
-      if (alpha <= 0) continue;
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      const dx = px(p.x), dy = px(p.y);
-
-      if (p.kind === 'ring') {
-        // Pixel-circle shockwave: radius on the grid, thickness in texels.
-        const r = px(p.r0 + (p.r1 - p.r0) * (1 - (1 - t) ** 2));
-        ctx.globalAlpha = stepAlpha(alpha * 0.8);
-        pixelRing(ctx, dx, dy, r, Math.max(PX, px(p.width * (1 - t))), p.color);
-      } else if (p.kind === 'confetti') {
-        ctx.translate(dx, dy);
-        ctx.rotate(snapAngle(p.rot));
-        // Tumble reads as a few discrete flip frames, not a smooth squash.
-        const flip = Math.round((Math.cos(p.age * 9) * 0.85 + 0.15) * 4) / 4;
-        ctx.scale(1, Math.max(0.25, Math.abs(flip)));
-        if (!drawSprite(ctx, p.sprite, 0, 0, p.h * 1.1)) {
-          // pre-atlas fallback: a flat pixel scrap
-          ctx.fillStyle = p.color;
-          ctx.fillRect(px(-p.w / 2), px(-p.h / 2), Math.max(PX, px(p.w)), Math.max(PX, px(p.h)));
-        }
-      } else if (p.kind === 'star') {
-        ctx.translate(dx, dy);
-        if (!drawSprite(ctx, 'icon-star', 0, 0, p.r * 2.2, { rotate: snapAngle(p.rot) })) {
-          ctx.rotate(snapAngle(p.rot));
-          starPath(ctx, 0, 0, p.r, p.r * 0.45, 5);
-          ctx.fillStyle = p.color;
-          ctx.fill();
-        }
-      } else if (p.kind === 'sparkle') {
-        ctx.translate(dx, dy);
-        // Scale pulse in quarter steps so the sprite pops frame by frame.
-        const s = Math.round(clamp(1 - Math.abs(t - 0.3) * 0.9, 0.25, 1.5) * 4) / 4;
-        if (!drawSprite(ctx, 'sparkle-star', 0, 0, p.r * 2 * s, { rotate: snapAngle(p.rot) })) {
-          // pixel plus twinkle
-          const arm = Math.max(PX, px(p.r * s));
-          ctx.fillStyle = p.color;
-          ctx.fillRect(-PX / 2, -arm, PX, arm * 2);
-          ctx.fillRect(-arm, -PX / 2, arm * 2, PX);
-        }
-      } else if (p.kind === 'emoji') {
-        drawEmoji(ctx, p.ch, dx, dy, p.size, { rotate: snapAngle(p.rot) });
-      } else { // puff — a chunky blob of texel squares growing in PX steps
-        const s = Math.max(PX, px(p.r * (1 + t * 0.8)));
-        ctx.globalAlpha = stepAlpha(alpha * 0.55);
-        ctx.fillStyle = p.color;
-        ctx.fillRect(dx - s, dy - s + PX, s * 2, s * 2 - PX * 2);
-        ctx.fillRect(dx - s + PX, dy - s, s * 2 - PX * 2, s * 2);
-      }
-      ctx.restore();
-    }
-
-    for (const f of this.floaters) {
-      const t = f.age / f.maxLife;
-      const y = f.y - f.rise * (1 - (1 - t) ** 2);
-      // Pop scale steps through a few discrete sizes; fade steps in eighths.
-      const pop = Math.round((t < 0.18 ? 0.6 + (t / 0.18) * 0.5 : 1) * 8) / 8;
-      ctx.save();
-      ctx.globalAlpha = stepAlpha(t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3);
-      ctx.translate(px(f.x), px(y));
-      ctx.scale(pop, pop);
-      ctx.font = `900 ${f.size}px ui-rounded, "SF Pro Rounded", system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = f.size * 0.2;
-      ctx.strokeStyle = f.stroke;
-      ctx.strokeText(f.text, 0, 0);
-      ctx.fillStyle = f.color;
-      ctx.fillText(f.text, 0, 0);
-      ctx.restore();
-    }
+    this.floaters = this.floaters.filter((f) => {
+      f.age += dt;
+      const t = f.age / f.life;
+      if (t >= 1) { f.mesh.removeFromParent(); return false; }
+      f.mesh.position.y = f.y + 1.1 * (1 - (1 - t) ** 2);
+      f.mesh.scale.setScalar(Math.min(1, t * 8) * Math.min(1, (1 - t) * 4) * (1 + Math.max(0, 0.25 - t)));
+      return true;
+    });
+    this.shake = Math.max(0, this.shake - dt * 4);
   }
 }
-
-/** Pre-baked celebration used at the end of every round. */
-export function celebrate(fx, audio, w, h) {
-  fx.confettiRain(w, 90);
-  fx.starBurst(w / 2, h * 0.62, 24);
-  audio.fanfare();
-}
-
-export { CONFETTI_COLORS };

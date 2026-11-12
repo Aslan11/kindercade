@@ -1,8 +1,9 @@
 /**
  * Shared vocabulary.
  *
- * Every word is picture-backed, because the child playing this cannot yet read
- * the word he is being asked to spell. Tiers map to spelling difficulty:
+ * Every word is also the name of a model in `src/models/`, because the child
+ * playing this cannot yet read the word he is being asked to spell. Tiers map
+ * to spelling difficulty:
  *
  *   1 — three-letter CVC words (cat, sun, bus)
  *   2 — four-letter words, mostly simple blends (frog, star, cake)
@@ -11,116 +12,121 @@
 
 export const WORDS = [
   // ---- tier 1: CVC -------------------------------------------------------
-  { word: 'cat', emoji: '🐱', tier: 1 },
-  { word: 'dog', emoji: '🐶', tier: 1 },
-  { word: 'pig', emoji: '🐷', tier: 1 },
-  { word: 'cow', emoji: '🐮', tier: 1 },
-  { word: 'fox', emoji: '🦊', tier: 1 },
-  { word: 'bee', emoji: '🐝', tier: 1 },
-  { word: 'ant', emoji: '🐜', tier: 1 },
-  { word: 'owl', emoji: '🦉', tier: 1 },
-  { word: 'bat', emoji: '🦇', tier: 1 },
-  { word: 'hen', emoji: '🐔', tier: 1 },
-  { word: 'sun', emoji: '☀️', tier: 1 },
-  { word: 'hat', emoji: '🎩', tier: 1 },
-  { word: 'cap', emoji: '🧢', tier: 1 },
-  { word: 'cup', emoji: '☕️', tier: 1 },
-  { word: 'bus', emoji: '🚌', tier: 1 },
-  { word: 'car', emoji: '🚗', tier: 1 },
-  { word: 'van', emoji: '🚐', tier: 1 },
-  { word: 'box', emoji: '📦', tier: 1 },
-  { word: 'key', emoji: '🔑', tier: 1 },
-  { word: 'bed', emoji: '🛏️', tier: 1 },
-  { word: 'egg', emoji: '🥚', tier: 1 },
-  { word: 'pie', emoji: '🥧', tier: 1 },
-  { word: 'nut', emoji: '🥜', tier: 1 },
-  { word: 'jar', emoji: '🫙', tier: 1 },
-  { word: 'log', emoji: '🪵', tier: 1 },
-  { word: 'pen', emoji: '🖊️', tier: 1 },
-  { word: 'web', emoji: '🕸️', tier: 1 },
-  { word: 'axe', emoji: '🪓', tier: 1 },
-  { word: 'map', emoji: '🗺️', tier: 1 },
-  { word: 'gem', emoji: '💎', tier: 1 },
+  { word: 'cat', tier: 1 },
+  { word: 'dog', tier: 1 },
+  { word: 'pig', tier: 1 },
+  { word: 'cow', tier: 1 },
+  { word: 'fox', tier: 1 },
+  { word: 'bee', tier: 1 },
+  { word: 'ant', tier: 1 },
+  { word: 'owl', tier: 1 },
+  { word: 'bat', tier: 1 },
+  { word: 'hen', tier: 1 },
+  { word: 'sun', tier: 1 },
+  { word: 'hat', tier: 1 },
+  { word: 'cap', tier: 1 },
+  { word: 'cup', tier: 1 },
+  { word: 'bus', tier: 1 },
+  { word: 'car', tier: 1 },
+  { word: 'van', tier: 1 },
+  { word: 'box', tier: 1 },
+  { word: 'key', tier: 1 },
+  { word: 'bed', tier: 1 },
+  { word: 'egg', tier: 1 },
+  { word: 'pie', tier: 1 },
+  { word: 'nut', tier: 1 },
+  { word: 'jar', tier: 1 },
+  { word: 'log', tier: 1 },
+  { word: 'pen', tier: 1 },
+  { word: 'web', tier: 1 },
+  { word: 'axe', tier: 1 },
+  { word: 'map', tier: 1 },
+  { word: 'gem', tier: 1 },
 
   // ---- tier 2: four letters ---------------------------------------------
-  { word: 'fish', emoji: '🐟', tier: 2 },
-  { word: 'frog', emoji: '🐸', tier: 2 },
-  { word: 'bear', emoji: '🐻', tier: 2 },
-  { word: 'lion', emoji: '🦁', tier: 2 },
-  { word: 'duck', emoji: '🦆', tier: 2 },
-  { word: 'bird', emoji: '🐦', tier: 2 },
-  { word: 'crab', emoji: '🦀', tier: 2 },
-  { word: 'goat', emoji: '🐐', tier: 2 },
-  { word: 'wolf', emoji: '🐺', tier: 2 },
-  { word: 'deer', emoji: '🦌', tier: 2 },
-  { word: 'star', emoji: '⭐️', tier: 2 },
-  { word: 'moon', emoji: '🌙', tier: 2 },
-  { word: 'tree', emoji: '🌳', tier: 2 },
-  { word: 'leaf', emoji: '🍃', tier: 2 },
-  { word: 'rain', emoji: '🌧️', tier: 2 },
-  { word: 'fire', emoji: '🔥', tier: 2 },
-  { word: 'rock', emoji: '🪨', tier: 2 },
-  { word: 'cake', emoji: '🍰', tier: 2 },
-  { word: 'milk', emoji: '🥛', tier: 2 },
-  { word: 'corn', emoji: '🌽', tier: 2 },
-  { word: 'pear', emoji: '🍐', tier: 2 },
-  { word: 'book', emoji: '📕', tier: 2 },
-  { word: 'ball', emoji: '⚽️', tier: 2 },
-  { word: 'drum', emoji: '🥁', tier: 2 },
-  { word: 'bell', emoji: '🔔', tier: 2 },
-  { word: 'boat', emoji: '⛵️', tier: 2 },
-  { word: 'kite', emoji: '🪁', tier: 2 },
-  { word: 'sock', emoji: '🧦', tier: 2 },
-  { word: 'ring', emoji: '💍', tier: 2 },
-  { word: 'gift', emoji: '🎁', tier: 2 },
-  { word: 'door', emoji: '🚪', tier: 2 },
-  { word: 'lamp', emoji: '💡', tier: 2 },
-  { word: 'shoe', emoji: '👟', tier: 2 },
-  { word: 'hand', emoji: '✋', tier: 2 },
-  { word: 'nest', emoji: '🪺', tier: 2 },
-  { word: 'moth', emoji: 'moth', tier: 2 },   // sprite name: 🦋 belongs to 'butterfly'
+  { word: 'fish', tier: 2 },
+  { word: 'frog', tier: 2 },
+  { word: 'bear', tier: 2 },
+  { word: 'lion', tier: 2 },
+  { word: 'duck', tier: 2 },
+  { word: 'bird', tier: 2 },
+  { word: 'crab', tier: 2 },
+  { word: 'goat', tier: 2 },
+  { word: 'wolf', tier: 2 },
+  { word: 'deer', tier: 2 },
+  { word: 'star', tier: 2 },
+  { word: 'moon', tier: 2 },
+  { word: 'tree', tier: 2 },
+  { word: 'leaf', tier: 2 },
+  { word: 'rain', tier: 2 },
+  { word: 'fire', tier: 2 },
+  { word: 'rock', tier: 2 },
+  { word: 'cake', tier: 2 },
+  { word: 'milk', tier: 2 },
+  { word: 'corn', tier: 2 },
+  { word: 'pear', tier: 2 },
+  { word: 'book', tier: 2 },
+  { word: 'ball', tier: 2 },
+  { word: 'drum', tier: 2 },
+  { word: 'bell', tier: 2 },
+  { word: 'boat', tier: 2 },
+  { word: 'kite', tier: 2 },
+  { word: 'sock', tier: 2 },
+  { word: 'ring', tier: 2 },
+  { word: 'gift', tier: 2 },
+  { word: 'door', tier: 2 },
+  { word: 'lamp', tier: 2 },
+  { word: 'shoe', tier: 2 },
+  { word: 'hand', tier: 2 },
+  { word: 'nest', tier: 2 },
+  { word: 'moth', tier: 2 },
 
   // ---- tier 3: five letters ---------------------------------------------
-  { word: 'apple', emoji: '🍎', tier: 3 },
-  { word: 'train', emoji: '🚂', tier: 3 },
-  { word: 'house', emoji: '🏠', tier: 3 },
-  { word: 'horse', emoji: '🐴', tier: 3 },
-  { word: 'snake', emoji: '🐍', tier: 3 },
-  { word: 'mouse', emoji: '🐭', tier: 3 },
-  { word: 'sheep', emoji: '🐑', tier: 3 },
-  { word: 'whale', emoji: '🐳', tier: 3 },
-  { word: 'tiger', emoji: '🐯', tier: 3 },
-  { word: 'zebra', emoji: '🦓', tier: 3 },
-  { word: 'panda', emoji: '🐼', tier: 3 },
-  { word: 'koala', emoji: '🐨', tier: 3 },
-  { word: 'bread', emoji: '🍞', tier: 3 },
-  { word: 'pizza', emoji: '🍕', tier: 3 },
-  { word: 'grape', emoji: '🍇', tier: 3 },
-  { word: 'peach', emoji: '🍑', tier: 3 },
-  { word: 'lemon', emoji: '🍋', tier: 3 },
-  { word: 'melon', emoji: '🍈', tier: 3 },
-  { word: 'candy', emoji: '🍬', tier: 3 },
-  { word: 'donut', emoji: '🍩', tier: 3 },
-  { word: 'cloud', emoji: '☁️', tier: 3 },
-  { word: 'plane', emoji: '✈️', tier: 3 },
-  { word: 'truck', emoji: '🚚', tier: 3 },
-  { word: 'robot', emoji: '🤖', tier: 3 },
-  { word: 'crown', emoji: '👑', tier: 3 },
-  { word: 'chair', emoji: '🪑', tier: 3 },
-  { word: 'clock', emoji: '⏰', tier: 3 },
-  { word: 'brush', emoji: '🖌️', tier: 3 },
-  { word: 'heart', emoji: '❤️', tier: 3 },
-  { word: 'skunk', emoji: '🦨', tier: 3 },
+  { word: 'apple', tier: 3 },
+  { word: 'train', tier: 3 },
+  { word: 'house', tier: 3 },
+  { word: 'horse', tier: 3 },
+  { word: 'snake', tier: 3 },
+  { word: 'mouse', tier: 3 },
+  { word: 'sheep', tier: 3 },
+  { word: 'whale', tier: 3 },
+  { word: 'tiger', tier: 3 },
+  { word: 'zebra', tier: 3 },
+  { word: 'panda', tier: 3 },
+  { word: 'koala', tier: 3 },
+  { word: 'bread', tier: 3 },
+  { word: 'pizza', tier: 3 },
+  { word: 'grape', tier: 3 },
+  { word: 'peach', tier: 3 },
+  { word: 'lemon', tier: 3 },
+  { word: 'melon', tier: 3 },
+  { word: 'candy', tier: 3 },
+  { word: 'donut', tier: 3 },
+  { word: 'cloud', tier: 3 },
+  { word: 'plane', tier: 3 },
+  { word: 'truck', tier: 3 },
+  { word: 'robot', tier: 3 },
+  { word: 'crown', tier: 3 },
+  { word: 'chair', tier: 3 },
+  { word: 'clock', tier: 3 },
+  { word: 'brush', tier: 3 },
+  { word: 'heart', tier: 3 },
+  { word: 'skunk', tier: 3 },
 ];
 
-export const wordsByTier = (tier) => WORDS.filter((w) => w.tier === tier);
+/**
+ * "A is for apple": one toy per letter, chosen so the word starts with the
+ * letter's everyday sound wherever English allows it.
+ */
+export const LETTER_TOY = {
+  a: 'apple', b: 'bee', c: 'cat', d: 'dog', e: 'elephant', f: 'fish', g: 'goat', h: 'horse', i: 'igloo',
+  j: 'jar', k: 'kite', l: 'lion', m: 'monkey', n: 'nest', o: 'octopus', p: 'pig', q: 'quilt', r: 'robot',
+  s: 'sun', t: 'tiger', u: 'umbrella', v: 'van', w: 'wolf', x: 'xylophone', y: 'yoyo', z: 'zebra',
+};
 
-/** Tier for a level number, so every game scales the same way. */
-export const tierForLevel = (level) => Math.min(3, Math.max(1, level));
-
-/** Words that start with a given letter. */
-export const wordsStartingWith = (letter) =>
-  WORDS.filter((w) => w.word[0].toLowerCase() === letter.toLowerCase());
+/** How to say a model's name out loud, where the name alone reads badly. */
+const SPOKEN = { yoyo: 'yo-yo', hat: 'top hat' };
+export const toyName = (name) => SPOKEN[name] || name.replace(/-/g, ' ');
 
 /** Letters that actually have picture words behind them (used by the phonics game). */
 export const SOUND_LETTERS = [...new Set(WORDS.map((w) => w.word[0]))].sort();
@@ -158,8 +164,6 @@ export const endsWithItsLetter = (word) => {
 };
 
 export const ALPHABET = 'abcdefghijklmnopqrstuvwxyz'.split('');
-export const VOWELS = ['a', 'e', 'i', 'o', 'u'];
-export const CONSONANTS = ALPHABET.filter((c) => !VOWELS.includes(c));
 
 /**
  * How each letter is *named* out loud, for when the name is what's wanted —
@@ -200,7 +204,26 @@ export const LETTER_SOUND = {
   x: 'kuss', y: 'yuh', z: 'zuh',
 };
 
-/** Number words 0–20, plus the tens, for the arithmetic games' voice-over. */
+/** Pictures that rhyme, by family. */
+export const RHYMES = [
+  ['cat', 'hat', 'bat'], ['dog', 'log', 'frog'], ['bee', 'key', 'tree'], ['car', 'jar', 'star'], ['hen', 'pen'],
+  ['fox', 'box'], ['cap', 'map'], ['bear', 'pear', 'chair'], ['goat', 'boat'], ['rain', 'train', 'plane'],
+  ['cake', 'snake'], ['rock', 'sock', 'clock'], ['house', 'mouse'], ['duck', 'truck'], ['moon', 'balloon'], ['bed', 'bread'],
+];
+
+/** Words a beginner can read by sounding out one letter at a time. */
+export const DECODABLE = [
+  'cat', 'dog', 'pig', 'fox', 'ant', 'bat', 'hen', 'sun', 'hat', 'cap', 'cup', 'bus', 'van', 'box', 'bed',
+  'nut', 'log', 'pen', 'web', 'map', 'frog', 'crab', 'drum', 'nest', 'milk', 'lamp', 'hand', 'gift',
+];
+
+/** The little words that turn up on every page and are best known on sight. */
+export const SIGHT_WORDS = [
+  'the', 'and', 'see', 'can', 'go', 'is', 'it', 'in', 'up', 'we', 'you', 'look', 'play', 'run', 'big', 'red', 'my',
+  'me', 'not', 'said', 'come', 'here', 'jump', 'make', 'help', 'find', 'down', 'away', 'blue', 'like', 'have', 'she', 'he', 'was',
+];
+
+/** Number words 0–20 for the arithmetic games' voice-over; larger numerals read fine as digits. */
 export const NUMBER_WORDS = [
   'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
   'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen',
@@ -211,8 +234,8 @@ export const numberWord = (n) => NUMBER_WORDS[n] ?? String(n);
 
 /** Cheerful, varied praise — hearing the same phrase every time gets old fast. */
 export const PRAISE = [
-  'Great job!', 'You did it!', 'Awesome!', 'Nice work!', 'Brilliant!',
-  'Way to go!', 'Fantastic!', 'Super!', 'You are amazing!', 'Perfect!',
+  'Great job!', 'You did it!', 'Awesome!', 'Nice work!', 'Brilliant!', 'Way to go!', 'Fantastic!',
+  'Super!', 'Amazing!', 'Perfect!', 'Hooray!', 'Wow!', 'Well done!', 'High five!',
 ];
 
 /** Encouragement for a wrong answer — always forward-looking, never negative. */
@@ -220,18 +243,11 @@ export const ENCOURAGE = [
   'Try again!', 'Almost!', 'So close!', 'Have another go!', 'Keep going!',
 ];
 
-/** Countable objects for the arithmetic games. */
-export const COUNTABLES = [
-  { emoji: '🍎', name: 'apples' }, { emoji: '🍌', name: 'bananas' },
-  { emoji: '🍓', name: 'strawberries' }, { emoji: '🐟', name: 'fish' },
-  { emoji: '🐝', name: 'bees' }, { emoji: '🦋', name: 'butterflies' },
-  { emoji: '⭐️', name: 'stars' }, { emoji: '🌸', name: 'flowers' },
-  { emoji: '🍄', name: 'mushrooms' }, { emoji: '🐢', name: 'turtles' },
-  { emoji: '🐸', name: 'frogs' }, { emoji: '🍪', name: 'cookies' },
-  { emoji: '🎈', name: 'balloons' }, { emoji: '🚗', name: 'cars' },
-  { emoji: '🦆', name: 'ducks' }, { emoji: '🐧', name: 'penguins' },
-];
+/** Countable things for the arithmetic games: model name and plural. */
+export const CRITTERS = [
+  ['duck', 'ducks'], ['frog', 'frogs'], ['bunny', 'bunnies'], ['pig', 'pigs'], ['hen', 'hens'],
+  ['sheep', 'sheep'], ['ladybug', 'ladybugs'], ['penguin', 'penguins'], ['turtle', 'turtles'],
+  ['cat', 'cats'], ['dog', 'dogs'], ['bee', 'bees'], ['owl', 'owls'], ['mouse', 'mice'],
+].map(([one, many]) => ({ one, many }));
 
-/** Shapes + colours used by the pattern and sorting puzzles. */
-export const SHAPES = ['circle', 'square', 'triangle', 'star', 'heart', 'diamond'];
-export const SHAPE_COLORS = ['#ff6b8b', '#ffc93c', '#4cc9f0', '#3ddc97', '#9b6cff', '#ff9f1c'];
+export const plural = (kind, n) => (n === 1 ? kind.one : kind.many);

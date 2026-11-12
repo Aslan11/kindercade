@@ -1,445 +1,176 @@
 /**
- * Pattern Party — sequencing and pattern recognition.
+ * Pattern Party — spotting a rule and predicting what comes next.
  *
- * Spotting that a sequence repeats by a rule, and predicting the next term, is
- * the first real piece of algebraic thinking a child does. So the strip is
- * always generated from an actual rule (AB, AAB, ABC, ABB, or a growing count),
- * and the wrong choices are drawn from tokens that already appear in the
- * pattern — which makes it reasoning rather than odd-one-out.
+ * Every dancer has its own note, so a pattern is a tune as well as a picture:
+ * the line plays itself, stops at the gap, and the ear wants the next note as
+ * much as the eye wants the next shape. Wrong choices are mostly dancers
+ * already in the line, which makes it reasoning rather than odd-one-out.
  */
 
-import { Game } from '../core/engine.js';
-import { Button, drawSlot } from '../core/ui.js';
-import {
-  candyRect, softText, bubbleText,
-  PX, px, pixelCircle, pixelRect, pixelLine, pixelPolyline,
-} from '../core/art.js';
-import { Ease } from '../core/anim.js';
-import { shuffle, pick, clamp, sample, TAU, shade } from '../core/util.js';
-import { drawSprite } from '../core/sprites.js';
-import { SHAPES, SHAPE_COLORS, PRAISE } from '../data/words.js';
+import * as THREE from '../core/three.js';
+import { Game, V } from '../core/engine.js';
+import { Toy, slab, shapeToy } from '../core/toy.js';
+import { build } from '../core/kit.js';
+import { text3d } from '../core/glyphs.js';
+import { bunting } from '../core/scenery.js';
+import { CANDY } from '../core/props.js';
+import { SHAPES, COLORS } from '../models/shapes.js';
+import { music } from '../core/music.js';
+import { deck, nearbyChoices, pick, randInt, range, sample, shuffle } from '../core/util.js';
+import { numberWord } from '../data/words.js';
 
-const RULES = {
-  1: [[0, 1], [0, 0, 1]],
-  2: [[0, 1, 2], [0, 0, 1, 1], [0, 1, 1]],
-  3: [[0, 1, 1], [0, 1, 2, 2], [0, 1, 2, 0]],
-};
-
-// The atlas names its shape sprites `<shape>-<colour>`, and its colour names sit
-// in the same order as SHAPE_COLORS — so the hex a token carries is a lookup by
-// index rather than a second table to keep in step.
-const ATLAS_COLORS = ['pink', 'gold', 'sky', 'mint', 'purple', 'orange'];
-
-const shapeSprite = (shape, hex) => {
-  const i = SHAPE_COLORS.indexOf(hex);
-  return i < 0 ? null : `${shape}-${ATLAS_COLORS[i]}`;
-};
-
-/* ------------------------------------------------- pixel shape fallbacks */
-// Used only until the sprite sheet loads: each shape is rasterised onto the
-// texel grid with a hard 1-texel outline, so even the stand-ins read 16-bit.
-
-/** Even-odd point-in-polygon test — geometry only, never painted. */
-const inPoly = (pts, x, y) => {
-  let inside = false;
-  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-    const [xi, yi] = pts[i];
-    const [xj, yj] = pts[j];
-    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-};
-
-/** Stamp a polygon as texel squares: flat fill plus a 1-texel edge outline. */
-function fillPixelPoly(ctx, pts, fill, outline) {
-  const xs = pts.map((p) => p[0]);
-  const ys = pts.map((p) => p[1]);
-  const x0 = px(Math.min(...xs)) - PX;
-  const y0 = px(Math.min(...ys)) - PX;
-  const cols = (px(Math.max(...xs)) + PX - x0) / PX + 1;
-  const rows = (px(Math.max(...ys)) + PX - y0) / PX + 1;
-  const hit = [];
-  for (let j = 0; j < rows; j++) {
-    hit.push([]);
-    for (let i = 0; i < cols; i++) {
-      hit[j].push(inPoly(pts, x0 + (i + 0.5) * PX, y0 + (j + 0.5) * PX));
-    }
-  }
-  for (const edgePass of [false, true]) {
-    ctx.fillStyle = edgePass ? outline : fill;
-    for (let j = 0; j < rows; j++) {
-      for (let i = 0; i < cols; i++) {
-        if (!hit[j][i]) continue;
-        const edge = !hit[j - 1]?.[i] || !hit[j + 1]?.[i] || !hit[j][i - 1] || !hit[j][i + 1];
-        if (edge === edgePass) ctx.fillRect(x0 + i * PX, y0 + j * PX, PX, PX);
-      }
-    }
-  }
-}
-
-/** Five-point star vertices for the rasteriser. */
-const starPoints = (cx, cy, outer, inner) => {
-  const pts = [];
-  for (let i = 0; i < 10; i++) {
-    const r = i % 2 === 0 ? outer : inner;
-    const a = -Math.PI / 2 + (i / 10) * TAU;
-    pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
-  }
-  return pts;
-};
-
-/** Heart outline sampled from the classic two-lobe cubics — geometry only. */
-const heartPoints = (cx, cy, size) => {
-  const s = size / 16;
-  const cubic = (p0, c1, c2, p1, t) => {
-    const u = 1 - t;
-    return [
-      u * u * u * p0[0] + 3 * u * u * t * c1[0] + 3 * u * t * t * c2[0] + t * t * t * p1[0],
-      u * u * u * p0[1] + 3 * u * u * t * c1[1] + 3 * u * t * t * c2[1] + t * t * t * p1[1],
-    ];
-  };
-  const bottom = [cx, cy + 6 * s];
-  const top = [cx, cy - 5 * s];
-  const pts = [];
-  for (let i = 0; i <= 14; i++) pts.push(cubic(bottom, [cx - 12 * s, cy - 3 * s], [cx - 7 * s, cy - 12 * s], top, i / 14));
-  for (let i = 0; i <= 14; i++) pts.push(cubic(top, [cx + 7 * s, cy - 12 * s], [cx + 12 * s, cy - 3 * s], bottom, i / 14));
-  return pts;
-};
+const RULES = { 1: ['AB'], 2: ['AB', 'AAB', 'ABB'], 3: ['ABC', 'AABB', 'ABB', 'AAB'], 4: ['ABAC', 'ABCC', 'grow', 'ABCD', 'AABC', 'shrink'] };
+const LENGTH = { 1: 5, 2: 7, 3: 8, 4: 8 };
+const ANIMALS = ['cat', 'frog', 'duck', 'pig', 'panda', 'lion', 'penguin', 'octopus'];
+const NOTES = [5, 7, 8, 10];
+const STAGE = 1.25, BRICK = 0.44;
 
 export default class PatternParty extends Game {
-  static meta = {
-    id: 'pattern-party',
-    title: 'Pattern Party',
-    subject: 'puzzle',
-    blurb: 'What comes next in the pattern?',
-    emoji: '🔷',
-    tint: '#ff8fd0',
-  };
+  static meta = { id: 'pattern-party', tint: '#f56fc0', music: 'party' };
 
   init() {
-    this.maxLevel = 3;
-    this.roundsTotal = 8;
-    this.busy = false;
-    this.wave = -1;
-    this.hintWave = -1;
-    this.flyer = null;
-    this.backdrop = { top: '#ffe4f4', bottom: '#fff4d8', hills: ['#f5b8dd', '#e894c8'] };
-    this.newRound();
+    this.roundsTotal = this.level === 1 ? 6 : 7;
+    this.view = { pos: V(0, 5.4, 17.5), look: V(0, 2.1, 0), fov: 30 };
+    this.light({ span: 10, shade: '#b8a4e8' });
+    this.scene.background = new THREE.Color('#4a2a9a');
+    this.scene.add(build((b) => {
+      b.box('#5a35b0', [0, 5, -5], [60, 24, 0.4], { ink: false });
+      b.box('#7a4fe0', [0, STAGE / 2 - 0.1, -1.6], [13.4, STAGE, 4], { r: 0.2 });
+      b.box('#ffd23c', [0, STAGE - 0.16, 0.42], [13.4, 0.14, 0.1]);
+      bunting(b, [-12, 6.6, -4.6], [0, 6.6, -4.6], { n: 9, sag: 1.2, size: 0.55 });
+      bunting(b, [0, 6.6, -4.6], [12, 6.6, -4.6], { n: 9, sag: 1.2, size: 0.55 });
+      b.both((s) => {
+        b.box('#2a1a4a', [s * 7.6, 2.4, -2.6], [1.9, 3.4, 1.4], { r: 0.16 });
+        for (const [y, r] of [[1.75, 0.62], [3.2, 0.42]]) b.cyl('#ff6bb0', [s * 7.6, y, -1.88], r, 0.1, { rot: [Math.PI / 2, 0, 0] });
+      });
+    }));
+    this.danceFloor();
+    this.addPal([-4.05, 0, 3.7], { size: 1.65, hat: 'party-hat' });
   }
 
-  /* ------------------------------------------------------------ round setup */
-
-  newRound() {
-    this.busy = false;
-    this.wave = -1;
-    this.hintWave = -1;
-    this.flyer = null;
-    this.placed = false;
-    this.wrongTries = 0;
-
-    // A "growing" pattern (1, 2, 3, ... of the same thing) appears at level 3.
-    this.growing = this.level === 3 && Math.random() < 0.35;
-    if (this.growing) this.buildGrowing();
-    else this.buildRepeating();
-
-    // Reading the strip aloud *is* the instruction, so it is the prompt speech
-    // rather than a second line spoken over the top of one.
-    this.setPrompt('What comes next?', { speak: false });
-    this.layout();
-    this.schedulePrompt(0.6);
-  }
-
-  /** A palette of distinct tokens to build this round's pattern from. */
-  makeTokens(n) {
-    const shapes = sample(SHAPES, n);
-    const colors = sample(SHAPE_COLORS, n);
-    return shapes.map((shape, i) => ({ shape, color: colors[i], count: 1, name: `${this.colorName(colors[i])} ${shape}` }));
-  }
-
-  colorName(hex) {
-    return ({
-      '#ff6b8b': 'pink', '#ffc93c': 'yellow', '#4cc9f0': 'blue',
-      '#3ddc97': 'green', '#9b6cff': 'purple', '#ff9f1c': 'orange',
-    })[hex] || 'coloured';
-  }
-
-  buildRepeating() {
-    const rule = pick(RULES[this.level] || RULES[1]);
-    const distinct = Math.max(...rule) + 1;
-    const choiceCount = this.level === 3 ? 4 : 3;
-    // One pool of guaranteed-distinct tokens: the first few build the pattern,
-    // and the whole pool becomes the choices. That way most of the wrong
-    // answers are tokens already in the pattern, so the child has to work out
-    // *which* one comes next rather than just spot the newcomer.
-    const pool = this.makeTokens(Math.max(choiceCount, distinct));
-    const tokens = pool.slice(0, distinct);
-    const visible = clamp(rule.length * 2 + 1, 5, 7);
-
-    this.strip = [];
-    for (let i = 0; i < visible; i++) this.strip.push(tokens[rule[i % rule.length]]);
-    this.answer = tokens[rule[visible % rule.length]];
-    this.choices = shuffle(pool);
-  }
-
-  /** 1, 2, 3, ... of the same token: a pattern that grows rather than repeats. */
-  buildGrowing() {
-    const [base] = this.makeTokens(1);
-    const start = 1;
-    const visible = 4;
-    this.strip = [];
-    for (let i = 0; i < visible; i++) this.strip.push({ ...base, count: start + i });
-    const answerCount = start + visible;
-    this.answer = { ...base, count: answerCount };
-    const wrong = shuffle([answerCount - 1, answerCount + 1, answerCount - 2])
-      .filter((c) => c > 0 && c !== answerCount)
-      .slice(0, 2)
-      .map((c) => ({ ...base, count: c }));
-    this.choices = shuffle([this.answer, ...wrong]);
-  }
-
-  sameToken(a, b) {
-    return a.shape === b.shape && a.color === b.color && a.count === b.count;
-  }
-
-  /* ---------------------------------------------------------------- layout */
-
-  layout() {
-    if (!this.strip) return;
-    const n = this.strip.length + 1;
-    const maxW = this.W * 0.9;
-    this.cell = clamp(Math.min(maxW / n - 14, 132), 78, 132);
-    const gap = this.cell * 0.14;
-    const stripW = this.cell * n + gap * (n - 1);
-    this.stripX = this.cx - stripW / 2;
-    this.stripY = this.playTop + clamp(this.H * 0.11, 70, 130);
-    this.stripStep = this.cell + gap;
-
-    this.buttons.clear();
-    const m = this.choices.length;
-    const size = clamp(Math.min((this.W * 0.8) / m - 26, 150), 104, 150);
-    const cgap = clamp(this.W * 0.035, 20, 46);
-    const startX = this.cx - (size * m + cgap * (m - 1)) / 2;
-    const cy = this.H - size - clamp(this.H * 0.09, 60, 110);
-    this.choices.forEach((token, i) => {
-      this.buttons.add(new Button({
-        x: startX + i * (size + cgap), y: cy, w: size, h: size, r: 28,
-        color: '#ffffff', id: `c${i}`,
-        onTap: () => this.choose(i),
-      }));
+  /** A chequered floor that changes colour on the beat. */
+  danceFloor() {
+    const cols = 15, rows = 8, size = 1.5;
+    const floor = new THREE.InstancedMesh(new THREE.BoxGeometry(size - 0.07, 0.1, size - 0.07), new THREE.MeshToonMaterial(), cols * rows);
+    Object.assign(floor.userData, { owned: true, ownsMaterial: true });
+    floor.receiveShadow = true;
+    const m = new THREE.Matrix4(), c = new THREE.Color();
+    const dim = ['#6a45c8', '#5a38b8'];
+    let shown = -1;
+    range(cols * rows).forEach((i) => floor.setMatrixAt(i, m.makeTranslation(((i % cols) - 7) * size, -0.05, 1.2 + Math.floor(i / cols) * size)));
+    this.every((dt, t) => {
+      const beat = Math.floor(t / music.beat) * 2 + (this.rave ? 1 : 0);
+      if (beat === shown) return;
+      shown = beat;
+      range(cols * rows).forEach((i) => floor.setColorAt(i, c.set(this.rave || (i * 7 + beat) % 11 === 0 ? CANDY[(i + beat) % 6] : dim[i % 2])));
+      floor.instanceColor.needsUpdate = true;
     });
-    this.choiceSize = size;
+    floor.setColorAt(0, c);
+    this.scene.add(floor);
   }
 
-  slotRect() {
-    const i = this.strip.length;
-    return { x: this.stripX + i * this.stripStep, y: this.stripY, w: this.cell, h: this.cell };
+  /* ---------------------------------------------------------------- dancers */
+
+  /** `n` distinct kinds of dancer: { name, note, make(size) }. */
+  troupe(n, animals) {
+    if (animals) return sample(ANIMALS, n).map((a, i) => ({ name: a, note: NOTES[i], make: (k) => new Toy(a, k) }));
+    const colors = sample(Object.keys(COLORS).filter((c) => c !== 'purple'), n);
+    return sample(SHAPES, n).map((s, i) => ({
+      name: `${colors[i]} ${s}`, note: NOTES[i],
+      make: (k) => shapeToy(s, colors[i], k),
+    }));
   }
 
-  /* ---------------------------------------------------------------- answer */
-
-  /** Reads the strip aloud, ending on the missing one. */
-  speakPrompt({ delay = 0 } = {}) {
-    const names = this.strip.map((t) => (this.growing ? `${t.count}` : t.name));
-    const spoken = names.slice(-4).join(', ');
-    return this.audio.say([
-      { text: spoken, rate: 0.85, gap: 0.3, delay },
-      { text: 'What comes next?', rate: 0.95 },
-    ]);
-  }
-
-  /** Visual only — run a wave along the strip to walk the eye down it. */
-  hintPulse() { this.hintWave = 0; }
-
-  choose(i) {
-    if (this.busy) return;
-    const token = this.choices[i];
-    const btn = this.buttons.get(`c${i}`);
-    if (!token || !btn) return;
-
-    if (!this.sameToken(token, this.answer)) {
-      this.nudge(btn.cx, btn.cy);
-      this.wrongTries++;
-      if (this.wrongTries >= 2) {
-        this.tweens.after(0.5, () => {
-          const right = this.choices.findIndex((c) => this.sameToken(c, this.answer));
-          this.buttons.get(`c${right}`)?.pulse();
-          this.speakPrompt();
-        });
-      }
-      return;
-    }
-
-    this.busy = true;
-    this.roundsDone++;
-    this.buttons.buttons.forEach((b) => { b.enabled = false; });
-    btn.hidden = true;
-
-    const slot = this.slotRect();
-    this.flyer = { token, x: btn.cx, y: btn.cy, size: this.choiceSize };
-    this.tweens.to(this.flyer, {
-      x: slot.x + slot.w / 2, y: slot.y + slot.h / 2, size: this.cell,
-    }, 0.42, { ease: Ease.outBack, onComplete: () => {
-      this.strip.push(token);
-      this.flyer = null;
-      this.placed = true;
-      this.wave = 0;
-      this.cheer(slot.x + slot.w / 2, slot.y + slot.h / 2);
-      this.audio.speak(this.successLine(), { delay: 0.2 });
-    } });
-
-    this.tweens.after(2.6, () => {
-      if (this.roundsDone >= this.roundsTotal) this.finishRound({ title: pick(PRAISE) });
-      else this.newRound();
-    });
-  }
-
-  successLine() {
-    const names = this.strip.map((t) => (this.growing ? `${t.count}` : t.name));
-    return `${names.slice(-3).join(', ')}. ${pick(PRAISE)}`;
-  }
-
-  /* ------------------------------------------------------------------ frame */
-
-  update(dt) {
-    if (this.wave >= 0) this.wave += dt * 3.4;
-    if (this.hintWave >= 0) {
-      this.hintWave += dt * 3.4;
-      // One pass down the strip, then it settles again.
-      if (this.hintWave > this.strip.length * 0.42 + Math.PI) this.hintWave = -1;
-    }
-  }
-
-  draw(ctx) {
-    this.drawBunting(ctx);
-
-    this.strip.forEach((token, i) => {
-      const x = this.stripX + i * this.stripStep;
-      const w = this.wave >= 0 ? this.wave : this.hintWave;
-      // Bob and wave-lift snap to the texel grid so the tiles step, not shimmer.
-      const lift = w >= 0 ? px(Math.max(0, Math.sin(w - i * 0.42)) * 18) : 0;
-      const sway = px(Math.sin(this.t * 1.3 + i * 0.5) * 5);
-      this.drawToken(ctx, token, x, this.stripY + sway - lift, this.cell);
-    });
-
-    if (!this.placed) {
-      const s = this.slotRect();
-      const sway = px(Math.sin(this.t * 1.3 + this.strip.length * 0.5) * 5);
-      drawSlot(ctx, s.x, s.y + sway, s.w, s.h, { r: 24, active: true, color: this.tint });
-      bubbleText(ctx, '?', s.x + s.w / 2, s.y + s.h / 2 + sway, this.cell * 0.5,
-        { fill: '#ffffff', stroke: shade(this.tint, -0.35) });
-    }
-
-    if (this.wave < 0) {
-      softText(ctx, 'Tap the one that comes next', this.cx, this.H - 34, 24,
-        { color: 'rgba(44,35,64,0.45)' });
-    }
-  }
-
-  /**
-   * A washing line with a short string down to each tile — the sag curve is
-   * sampled and snapped to the texel grid, so the rope steps like pixels.
-   */
-  drawBunting(ctx) {
-    const y = this.stripY - this.cell * 0.42;
-    const lineAt = (x) => {
-      const k = x / Math.max(1, this.W);
-      return (y - 18) + Math.sin(k * Math.PI) * 44;
+  tower(n) {
+    return {
+      name: numberWord(n), note: 3 + n,
+      make: (k) => {
+        const g = new THREE.Group();
+        g.scale.setScalar(k / 1.7);
+        range(n).forEach((i) => { const b = slab(0.86, BRICK, 0.6, CANDY[i], 0.1); b.position.y = i * BRICK; g.add(b); });
+        const t = new Toy(g, k);
+        t.height = (n * BRICK * k) / 1.7;
+        return t;
+      },
     };
-    const rope = '#cba3cd'; // flat lilac — the old translucent stroke over the backdrop
-    const pts = [];
-    for (let x = 0; x <= this.W; x += PX * 6) pts.push([x, lineAt(x)]);
-    pts.push([this.W, lineAt(this.W)]);
-    pixelPolyline(ctx, pts, { color: rope, width: PX });
+  }
 
-    const total = this.strip.length + 1;
-    for (let i = 0; i < total; i++) {
-      const x = this.stripX + i * this.stripStep + this.cell / 2;
-      const sway = px(Math.sin(this.t * 1.3 + i * 0.5) * 5);
-      pixelLine(ctx, x, lineAt(x), x, this.stripY + sway, { color: rope, width: PX });
+  /** The line-up, where the gap is, and what to offer. */
+  compose(rule, round) {
+    if (rule === 'grow' || rule === 'shrink') {
+      const counts = rule === 'grow' ? [1, 2, 3, 4, 5] : [6, 5, 4, 3, 2];
+      const kinds = Object.fromEntries(range(6).map((i) => [i + 1, this.tower(i + 1)]));
+      return { line: counts.map((c) => kinds[c]), gap: 4, offer: nearbyChoices(counts[4], 3, 1, 6).map((c) => kinds[c]) };
+    }
+    const kinds = new Set(rule).size;
+    const troupe = this.troupe(this.level === 1 ? 2 : Math.max(3, kinds), round % 2 === 1);
+    const n = LENGTH[this.level];
+    const line = range(n).map((i) => troupe[rule.charCodeAt(i % rule.length) - 65]);
+    // From level 3 the gap is sometimes in the middle, once the rule has shown itself.
+    const gap = this.level >= 3 && round % 2 ? randInt(rule.length, n - 2) : n - 1;
+    return { line, gap, offer: shuffle(troupe) };
+  }
+
+  async playLine(toys, upTo = toys.length) {
+    for (const t of toys.slice(0, upTo)) {
+      t.hop(0.35, 0.3);
+      if (t.kindOf) this.audio.step(t.kindOf.note, { vol: 0.3 }); else this.audio.boing(0.6);
+      await this.wait(0.36);
     }
   }
 
-  /**
-   * Tokens are drawn as atlas shapes on a candy tile — distinguishable by shape
-   * as well as colour (colour alone is a poor signal), with pixel-rasterised
-   * stand-ins until the sheet loads.
-   */
-  drawToken(ctx, token, x, y, size, tile = true) {
-    if (tile) {
-      candyRect(ctx, x, y, size, size, size * 0.2, '#ffffff', { depth: 7, gloss: false });
-    }
-    const cx = x + size / 2;
-    const cy = y + size / 2;
+  async play() {
+    const nextRule = deck(RULES[this.level]);
+    for (let round = 0; round < this.roundsTotal; round++) {
+      const { line, gap, offer } = this.compose(nextRule(), round);
+      const step = Math.min(1.85, 10.6 / line.length), size = step * 0.86;
+      const spot = (i) => [(i - (line.length - 1) / 2) * step, STAGE - 0.1, -0.5];
+      const toys = this.toys = line.map((kind, i) => {
+        let t;
+        if (i === gap) {
+          const q = text3d('?', { height: size * 0.62, color: '#ffd23c', weight: 0.13 });
+          q.position.y = size * 0.52;
+          t = new Toy(q, size);
+          t.float = 0.06;
+        } else {
+          t = Object.assign(kind.make(size), { kindOf: kind });
+          this.hot(t, { r: size / 2, poke: true, tap: () => { t.hop(0.35, 0.3); this.audio.step(kind.note, { vol: 0.3 }); } });
+        }
+        t.position.set(...spot(i));
+        this.scene.add(t);
+        this.appear(t, i * 0.07);
+        return t;
+      });
+      this.hud.prompt(gap === line.length - 1 ? 'What comes next?' : 'What is missing?');
+      await this.wait(0.9);
+      await this.playLine(toys);
 
-    if (token.count > 1) {
-      // Growing patterns show N copies of the same small shape.
-      const cols = Math.min(3, token.count);
-      const rows = Math.ceil(token.count / cols);
-      const s = size * 0.26;
-      for (let i = 0; i < token.count; i++) {
-        const r = Math.floor(i / cols);
-        const c = i % cols;
-        const inRow = r === rows - 1 ? token.count - r * cols : cols;
-        this.drawShape(ctx, token.shape, token.color,
-          cx - ((inRow - 1) * s) / 2 + c * s,
-          cy - ((rows - 1) * s) / 2 + r * s, s * 0.42);
-      }
-      return;
+      const picks = this.row(offer.map((kind) => Object.assign(kind.make(1.3), { kindOf: kind })), { x: 0.9, z: 4.3, gap: offer.length > 3 ? 1.75 : 2.1 });
+      const ask = gap === line.length - 1 ? 'What comes next?' : 'What is missing?';
+      const lead = line.slice(Math.max(0, gap - 4), gap).map((k) => k.name).join(', ');
+      this.prompt(ask, ask);
+      this.speech = [{ text: lead, rate: 0.85, gap: 0.3 }, ask];
+      const right = await this.choose(picks, picks.find((p) => p.kindOf === line[gap]), { r: 0.85, wrong: () => this.speech });
+
+      picks.forEach((p) => { if (p !== right) this.vanish(p); });
+      this.remove(toys[gap]);
+      toys[gap] = right;
+      this.scaleTo(right, size / 1.3, 0.45);
+      await this.jump(right, spot(gap), { height: 1.6, dur: 0.48 });
+      this.win(right);
+      this.rave = true;
+      await this.wait(0.7);
+      await this.playLine(toys);
+      toys.forEach((t) => { t.dancing = true; });
+      this.pal.dancing = true;
+      this.fx.confetti({ x: pick([-3, 3]), y: -1 }, 30, { up: 0.7 });
+      await this.talk([], { min: 1.2 });
+      this.rave = this.pal.dancing = false;
+      toys.forEach((t, i) => this.vanish(t, i * 0.04));
+      await this.wait(0.55);
     }
-    this.drawShape(ctx, token.shape, token.color, cx, cy, size * 0.3);
+    this.finish();
   }
 
-  drawShape(ctx, shape, color, cx, cy, r) {
-    // The atlas carries all six shapes in all six palette colours. Its cells have
-    // a little padding, so the sprite draws a touch over the fallback's 2r span —
-    // and falls through to the pixel constructions below until the sheet loads.
-    const key = shapeSprite(shape, color);
-    if (key && drawSprite(ctx, key, cx, cy, r * 2.2)) return;
-
-    const outline = shade(color, -0.5);
-    switch (shape) {
-      case 'circle':
-        pixelCircle(ctx, cx, cy, r, {
-          fill: color, outline, highlight: shade(color, 0.22), lowlight: shade(color, -0.22),
-        });
-        return;
-      case 'square':
-        pixelRect(ctx, cx - r * 0.9, cy - r * 0.9, r * 1.8, r * 1.8, {
-          fill: color, outline, highlight: shade(color, 0.22), lowlight: shade(color, -0.22),
-        });
-        return;
-      case 'triangle':
-        fillPixelPoly(ctx, [
-          [cx, cy - r], [cx + r * 0.92, cy + r * 0.72], [cx - r * 0.92, cy + r * 0.72],
-        ], color, outline);
-        return;
-      case 'star':
-        fillPixelPoly(ctx, starPoints(cx, cy, r * 1.08, r * 0.48), color, outline);
-        return;
-      case 'heart':
-        fillPixelPoly(ctx, heartPoints(cx, cy, r * 2.2), color, outline);
-        return;
-      default: // diamond
-        fillPixelPoly(ctx, [
-          [cx, cy - r], [cx + r * 0.82, cy], [cx, cy + r], [cx - r * 0.82, cy],
-        ], color, outline);
-    }
-  }
-
-  /**
-   * The ButtonLayer paints the blank tiles, so the shapes that sit on them —
-   * and the one flying into the pattern — have to be drawn afterwards.
-   */
-  drawOverlay(ctx) {
-    this.choices.forEach((token, i) => {
-      const b = this.buttons.get(`c${i}`);
-      if (!b || b.hidden) return;
-      this.drawToken(ctx, token, b.x, b.y - px(b.press.value * 8), this.choiceSize, false);
-    });
-
-    if (this.flyer) {
-      this.drawToken(ctx, this.flyer.token,
-        this.flyer.x - this.flyer.size / 2, this.flyer.y - this.flyer.size / 2, this.flyer.size);
-    }
-  }
+  nudgeChoices() { this.playLine(this.toys); }
 }
