@@ -9,7 +9,7 @@ and unwraps toys that come to live on the beach.
 
 ## The games
 
-Every game has four levels. **Level 1 is pitched at a three-year-old**; older
+Every game has four levels (Robot Road has eight). **Level 1 is pitched at a three-year-old**; older
 children start on level 2. Two stars on a level opens the next.
 
 ### 🔢 Numbers
@@ -39,7 +39,7 @@ children start on level 2. Two stars on a level opens the next.
 | **Magic Match** | Memory cards that spring to life. | 3 pairs · animals · numeral ↔ quantity · A ↔ a |
 | **Pattern Party** | Every dancer plays a note, so patterns are heard as well as seen. | AB · AAB · gaps in the middle · growing patterns |
 | **Jigsaw Garden** | Pick a picture, piece it together, and it comes alive. | 2–4 · 4–6 · 9–12 · 12–16 pieces |
-| **Robot Road** | Queue up arrows, press go, debug. | drive · plan · obstacles · fetch the key first |
+| **Robot Road** | Queue up arrows, press go, follow the footprints, debug. | drive · plan · obstacles · fetch the key first · find the bug · repeat an arrow · fix the number · loop a pattern |
 | **Sort Shop** | Things roll in on a conveyor and need a crate. | colour · shape · kind · two rules at once |
 
 There is no way to lose and no clock to beat. A wrong answer gets a warm "not
@@ -83,13 +83,14 @@ Spoken Content → Voices**.
 npm start            # http://localhost:8080 — plain static server, same as Pages
 npm run check        # parse + contract checks, builds every model (this is what CI runs)
 npm run smoke        # first-launch flow, then boots and mashes every game at three screen shapes
-npm run playthrough  # plays all 60 levels to the prize screen with real taps and drags
+npm run playthrough  # plays all 64 levels to the prize screen with real taps and drags
 npm run trace-check  # traces all 62 letter shapes, and tries to cheat at each
-npm test             # all four
+npm run robot-check  # fuzzes Robot Road's boards and hints (no browser)
+npm test             # all five
 npm run icons        # regenerate the app icons from tools/make-icons.mjs
 ```
 
-`check` is dependency-free. The other three drive a real browser via Playwright
+`check` and `robot-check` are dependency-free. The other three drive a real browser via Playwright
 (set `CHROMIUM_PATH` to use something other than Google Chrome); add `SHOTS=1`
 to `smoke` or `playthrough` to write screenshots to `.smoke/`.
 `/tools/gallery.html` shows every model on one page.
@@ -126,7 +127,7 @@ src/app.js            router, players, toy box, settings
 src/home.js           the island
 src/core/             engine, modelling kit, toys, effects, HUD, audio, music, progress
 src/models/           every buddy, animal and object
-src/data/             word lists, phonics, handwriting strokes
+src/data/             word lists, phonics, handwriting strokes, robot puzzles
 src/games/            one module per game + the registry
 vendor/three/         three.js r170 (MIT)
 tools/                static server, checks, browser tests, model gallery

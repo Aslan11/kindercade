@@ -112,7 +112,7 @@ what 🔊 repeats. Keep them apart whenever the text would give the answer away.
 
 ## Rules for this arcade
 
-1. **Four levels**, and the first is for a three-year-old.
+1. **Four levels** (or eight, as two rows in the picker), and the first is for a three-year-old.
 2. **Failure is never punishing.** No timers, no lives, no losing.
 3. **Wrong answers should teach.** Where it is cheap, show *why* it was wrong.
 4. **Speak everything.** The player cannot read yet.

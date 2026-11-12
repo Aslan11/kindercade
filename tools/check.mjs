@@ -141,7 +141,7 @@ for (const name of wanted) if (!MODELS[name]) note(`no model called "${name}"`);
 for (const name of Object.keys(MODELS)) {
   try { template(name); } catch (err) { note(`model "${name}" failed to build: ${err.message}`); }
 }
-for (const g of GAMES) if (g.levels.length !== LEVELS) note(`${g.id} describes ${g.levels.length} levels, expected ${LEVELS}`);
+for (const g of GAMES) if (![LEVELS, LEVELS * 2].includes(g.levels.length)) note(`${g.id} describes ${g.levels.length} levels; the picker lays out rows of ${LEVELS}`);
 
 /* ── report ───────────────────────────────────────────────────────────── */
 

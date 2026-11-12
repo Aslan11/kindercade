@@ -38,5 +38,5 @@ export async function openPage(browser, { width, height, save }) {
 /** One player with every level open and the voice off (there is nobody to hear it). */
 export const veteran = (games) => ({
   voice: false,
-  players: [{ buddy: 'ziggy', games: Object.fromEntries(games.map((g) => [g.id, { level: 4, levels: [0, 0, 0, 0] }])) }],
+  players: [{ buddy: 'ziggy', games: Object.fromEntries(games.map((g) => [g.id, { level: g.levels.length, levels: g.levels.map(() => 0) }])) }],
 });

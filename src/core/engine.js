@@ -22,7 +22,7 @@ import { Toy, Buddy } from './toy.js';
 import { Tweens, Ease } from './anim.js';
 import { audio } from './audio.js';
 import { music } from './music.js';
-import { progress, LEVELS } from './progress.js';
+import { progress } from './progress.js';
 import { showResults } from './results.js';
 import { clamp, lerp, pick, rand, approach } from './util.js';
 import { PRAISE, ENCOURAGE } from '../data/words.js';
@@ -786,8 +786,8 @@ export class Game {
     this._praise = null;
     this.busy = true;
     const stars = this.starsEarned();
-    const result = progress.recordRound(this.meta.id, this.level, stars);
-    const hasNext = this.level < LEVELS && this.level < progress.levelFor(this.meta.id);
+    const result = progress.recordRound(this.meta.id, this.level, stars, this.opts.levels);
+    const hasNext = this.level < Math.min(this.opts.levels, progress.levelFor(this.meta.id));
     if (this.pal) this.pal.dancing = true;
     showResults(this, { stars, hasNext, ...result });
   }

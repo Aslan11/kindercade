@@ -79,7 +79,8 @@ export const GAMES = [
   },
   {
     id: 'robot-road', title: 'Robot Road', subject: 'puzzle', tint: '#ff7a59',
-    skill: 'Planning ahead & first coding', levels: ['Drive', 'Plan a path', 'Obstacles', 'Treasure hunt'],
+    skill: 'Planning ahead & first coding',
+    levels: ['Drive', 'Plan a path', 'Obstacles', 'Treasure hunt', 'Find the bug', 'Repeat', 'Fix the number', 'Loops'],
     load: () => import('./robot-road.js'),
   },
   {

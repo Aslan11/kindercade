@@ -13,7 +13,7 @@
 
 const KEY = 'kindercade.save.v1';
 
-/** Level 1 of every game is pitched at a three-year-old; older children start on 2. */
+/** Levels in a game, unless it has more. Level 1 is pitched at a three-year-old; older children start on 2. */
 export const LEVELS = 4;
 export const startLevel = (age) => (age <= 3 ? 1 : 2);
 export const MAX_PLAYERS = 4;
@@ -171,12 +171,12 @@ class Progress {
    * Record a finished game. The present is banked here, before it is
    * unwrapped, so leaving mid-celebration never loses it.
    */
-  recordRound(id, level, stars) {
+  recordRound(id, level, stars, last = LEVELS) {
     const p = this.player;
     const open = this.levelFor(id);
-    const g = p.games[id] || (p.games[id] = { levels: new Array(LEVELS).fill(0), level: 1 });
+    const g = p.games[id] || (p.games[id] = { levels: new Array(last).fill(0), level: 1 });
     g.levels[level - 1] = Math.max(g.levels[level - 1] || 0, stars);
-    const unlocked = stars >= 2 && level === open && level < LEVELS;
+    const unlocked = stars >= 2 && level === open && level < last;
     if (unlocked) g.level = level + 1;
 
     const jarBefore = p.jar;

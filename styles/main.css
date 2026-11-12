@@ -278,7 +278,7 @@ h1 span {
 
 .sheet.must #sheet-close { display: none; }
 
-.levels { display: flex; gap: 0.26rem; margin-top: 0.3rem; }
+.levels { display: grid; grid-template-columns: repeat(4, auto); gap: 0.26rem; margin-top: 0.3rem; }
 .level {
   display: flex;
   flex-direction: column;

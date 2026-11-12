@@ -31,6 +31,7 @@ const CORE = [
   'src/core/three.js',
   'src/core/toy.js',
   'src/core/util.js',
+  'src/data/robot.js',
   'src/data/strokes.js',
   'src/data/words.js',
   'src/games/balloon-math.js',

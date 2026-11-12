@@ -8,7 +8,7 @@
 import { Engine } from './core/engine.js';
 import { Hud, ICONS, roundButton } from './core/hud.js';
 import { audio } from './core/audio.js';
-import { progress, TOYS, HATS, BUDDIES, LEVELS, JAR_SIZE, MAX_PLAYERS } from './core/progress.js';
+import { progress, TOYS, HATS, BUDDIES, JAR_SIZE, MAX_PLAYERS } from './core/progress.js';
 import { GAMES, gameById } from './games/index.js';
 import { numberWord, toyName } from './data/words.js';
 import Home from './home.js';
@@ -356,13 +356,13 @@ function showGame(id, level) {
       if (!current()) return;          // the route changed while the module downloaded
       $('#home').hidden = true;
       history.replaceState(null, '', `#/play/${id}/${lv}`);
-      engine.start(mod.default, { level: lv, onReplay: play });
+      engine.start(mod.default, { level: lv, levels: entry.levels.length, onReplay: play });
     } catch (err) {
       console.error('[kindercade] failed to start', id, err);
       location.hash = '#/';
     }
   });
-  play(Math.min(level || open, open, LEVELS));
+  play(Math.min(level || open, open, entry.levels.length));
 }
 
 function showHome(then) {
