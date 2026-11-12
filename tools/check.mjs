@@ -8,7 +8,7 @@
 
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join, dirname, resolve, relative } from 'node:path';
+import { join, dirname, resolve, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -77,8 +77,12 @@ for (const file of onDisk) {
 /* ── 4. the service worker precaches everything that ships ────────────── */
 
 const swSrc = readFileSync(join(ROOT, 'sw.js'), 'utf8');
-for (const id of ids) {
-  if (!swSrc.includes(`src/games/${id}.js`)) note(`sw.js does not precache src/games/${id}.js`);
+for (const file of files) {
+  const rel = relative(ROOT, file).split(sep).join('/');
+  if (/^(src|vendor)\//.test(rel) && !swSrc.includes(`'${rel}'`)) note(`sw.js does not precache ${rel}`);
+}
+for (const [, url] of swSrc.matchAll(/^  '([^']+)',$/gm)) {
+  if (!existsSync(join(ROOT, url))) note(`sw.js precaches ${url}, which does not exist`);
 }
 
 /* ── 5. required static files exist ───────────────────────────────────── */
@@ -122,6 +126,23 @@ for (const [label, map] of [['LETTER_SOUND', LETTER_SOUND], ['LETTER_NAME', LETT
   }
 }
 
+/* ── 7. every picture a game can ask for exists, and builds ───────────── */
+
+const words = await import(new URL('../src/data/words.js', import.meta.url));
+const { MODELS, template } = await import(new URL('../src/models/index.js', import.meta.url));
+const { TOYS, BUDDIES, LEVELS } = await import(new URL('../src/core/progress.js', import.meta.url));
+const { GAMES } = await import(new URL('../src/games/index.js', import.meta.url));
+
+const wanted = new Set([
+  ...words.WORDS.map((w) => w.word), ...words.RHYMES.flat(), ...words.DECODABLE,
+  ...Object.values(words.LETTER_TOY), ...words.CRITTERS.map((c) => c.one), ...TOYS, ...BUDDIES,
+]);
+for (const name of wanted) if (!MODELS[name]) note(`no model called "${name}"`);
+for (const name of Object.keys(MODELS)) {
+  try { template(name); } catch (err) { note(`model "${name}" failed to build: ${err.message}`); }
+}
+for (const g of GAMES) if (![LEVELS, LEVELS * 2].includes(g.levels.length)) note(`${g.id} describes ${g.levels.length} levels; the picker lays out rows of ${LEVELS}`);
+
 /* ── report ───────────────────────────────────────────────────────────── */
 
 if (problems.length) {
@@ -129,4 +150,4 @@ if (problems.length) {
   problems.forEach((p) => console.error('  • ' + p));
   process.exit(1);
 }
-console.log(`✓ ${files.length} modules parse, ${ids.length} games registered, all imports resolve.`);
+console.log(`✓ ${files.length} modules parse, ${ids.length} games registered, ${Object.keys(MODELS).length} models build.`);

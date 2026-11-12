@@ -1,10 +1,11 @@
 /**
  * Browser smoke test.
  *
- * Boots the real site in Chromium at iPad-ish dimensions, opens every game,
- * pokes at it with synthetic touches, and fails on:
+ * Boots the real site, walks a brand-new child through picking a buddy, opens
+ * every game at several screen shapes, mashes it the way a toddler would, and
+ * fails on:
  *   - any console error or uncaught exception
- *   - a canvas that renders (almost) nothing, i.e. a blank screen
+ *   - a canvas that renders (almost) nothing, or has stopped moving
  *
  * A blank screen is the failure mode that matters most here: a five-year-old
  * cannot report a stack trace.
@@ -14,36 +15,24 @@
  *   SHOTS=1 node tools/smoke.mjs         # also write screenshots to .smoke/
  */
 
-import { createRequire } from 'node:module';
-import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { start } from './serve.mjs';
+import { launch, openPage, veteran } from './browser.mjs';
+import { GAMES } from '../src/games/index.js';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const SHOT_DIR = join(ROOT, '.smoke');
+const SHOT_DIR = join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), '.smoke');
 const PORT = Number(process.env.PORT) || 8123;
 const WRITE_SHOTS = process.env.SHOTS === '1';
 
-/* Playwright is installed globally in this environment, not as a local dep. */
-function loadPlaywright() {
-  const require = createRequire(import.meta.url);
-  try { return require('playwright'); } catch (_) { /* fall through */ }
-  const globalRoot = execFileSync('npm', ['root', '-g'], { encoding: 'utf8' }).trim();
-  return createRequire(join(globalRoot, 'x.js'))('playwright');
-}
-
-const { chromium } = loadPlaywright();
-
-const { GAMES } = await import('../src/games/index.js').catch(() => ({ GAMES: [] }));
-const only = process.argv.slice(2).filter((a) => !a.startsWith('-'));
+const only = process.argv.slice(2);
 const targets = only.length ? GAMES.filter((g) => only.includes(g.id)) : GAMES;
 
-/* Devices worth checking: a 4:3 iPad and a wide 16:10 window (aspect clamps). */
 const VIEWPORTS = [
-  { name: 'ipad', width: 1180, height: 820 },
-  { name: 'wide', width: 1600, height: 860 },
+  { name: 'ipad', width: 885, height: 615 },
+  { name: 'phone', width: 844, height: 390 },
+  { name: 'upright', width: 540, height: 720 },
 ];
 
 const failures = [];
@@ -52,146 +41,106 @@ const fail = (msg) => { failures.push(msg); console.error('  ✗ ' + msg); };
 const server = await start(PORT);
 const base = `http://127.0.0.1:${PORT}/`;
 if (WRITE_SHOTS) mkdirSync(SHOT_DIR, { recursive: true });
+const browser = await launch();
 
-// Playwright's downloaded Chromium builds are unsigned, so Santa kills them on
-// launch. Prefer the signed Google Chrome install (channel: 'chrome'); an
-// explicit CHROMIUM_PATH still wins for anyone running elsewhere.
-const browser = await chromium.launch({
-  ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : { channel: 'chrome' }),
-  args: ['--autoplay-policy=no-user-gesture-required', '--font-render-hinting=none'],
-});
-
-/** How much of the canvas is actually painted — catches blank screens. */
-const CANVAS_STATS = `(() => {
-  const c = document.querySelector('#game-canvas');
-  if (!c) return { ok: false, reason: 'no canvas' };
-  const g = c.getContext('2d');
-  const w = c.width, h = c.height;
-  if (!w || !h) return { ok: false, reason: 'canvas has zero size' };
-  let d;
-  try { d = g.getImageData(0, 0, w, h).data; } catch (e) { return { ok: false, reason: 'getImageData: ' + e.message }; }
+/** Runs in the page: how many colours are on screen, and do they change? */
+async function canvasStats() {
+  const { engine } = window.kindercade;
+  const small = Object.assign(document.createElement('canvas'), { width: 96, height: 64 });
+  const g = small.getContext('2d', { willReadFrequently: true });
+  const grab = () => {
+    engine.render();      // a WebGL canvas can only be read in the task that drew it
+    g.drawImage(engine.canvas, 0, 0, 96, 64);
+    return g.getImageData(0, 0, 96, 64).data;
+  };
+  const a = grab();
+  await new Promise((r) => setTimeout(r, 700));
+  const b = grab();
   const seen = new Set();
-  let lum = 0, n = 0;
-  for (let i = 0; i < d.length; i += 4 * 97) {
-    seen.add((d[i] >> 4) + ',' + (d[i+1] >> 4) + ',' + (d[i+2] >> 4));
-    lum += (d[i] + d[i+1] + d[i+2]) / 3;
-    n++;
+  for (let i = 0; i < a.length; i += 4) seen.add(`${a[i] >> 4},${a[i + 1] >> 4},${a[i + 2] >> 4}`);
+  return { colors: seen.size, alive: a.some((v, i) => v !== b[i]), id: engine.game?.meta.id };
+}
+
+/* ---- first launch, a second child, and a save from the old sticker-book days ---- */
+{
+  console.log('\n─── players ─────────────────────────');
+  const page = await openPage(browser, { width: 885, height: 615 });
+  await page.goto(base);
+  for (const [buddy, age] of [['Momo', '3'], ['Bolt', '5']]) {
+    await page.locator('.pick', { hasText: buddy }).click();
+    await page.locator('.pick.age', { hasText: age }).click();
+    await page.waitForSelector('#overlay', { state: 'hidden' });
+    await page.waitForSelector('#wipe:not(.shut)', { state: 'attached' });
+    const level = await page.evaluate(() => window.kindercade.progress.levelFor('see-saw'));
+    if (level !== (age === '3' ? 1 : 2)) fail(`a ${age}-year-old starts on level ${level}`);
+    await page.click('#who-btn');
+    if (buddy === 'Momo') await page.click('.pick.add');
   }
-  return { ok: true, colors: seen.size, meanLum: lum / n, w, h };
-})()`;
+  if (await page.locator('.pick:not(.add)').count() !== 2) fail('the second player was not added');
+  await page.click('#sheet-close');
+  for (const btn of ['#toy-btn', '#settings-btn']) { await page.click(btn, { delay: 1500 }); await page.click('#sheet-close'); }
+  await page.click('[data-game="see-saw"]');
+  await page.waitForFunction(() => window.kindercade.game?.meta.id === 'see-saw');
+  await page.click('#hud-home');
+  await page.waitForFunction(() => window.kindercade.game?.meta.id === 'home');
+  page.errors.forEach((e) => fail(`players ${e}`));
+  await page.context().close();
 
-for (const vp of VIEWPORTS) {
-  console.log(`\n─── ${vp.name} (${vp.width}x${vp.height}) ─────────────────────────`);
-  const context = await browser.newContext({
-    viewport: { width: vp.width, height: vp.height },
-    deviceScaleFactor: 2,
-    hasTouch: true,
-    locale: 'en-US',
+  const old = await openPage(browser, {
+    width: 885, height: 615,
+    save: { sound: false, stickers: ['panda', 'carousel'], totalStars: 5, games: { 'balloon-math': { stars: 3, plays: 4, level: 2 } } },
   });
-  const page = await context.newPage();
-
-  let errors = [];
-  page.on('console', (msg) => {
-    if (msg.type() === 'error') errors.push(`console: ${msg.text()}`);
+  await old.goto(base);
+  await old.waitForFunction(() => window.kindercade?.game);
+  const kept = await old.evaluate(() => {
+    const { progress: p } = window.kindercade;
+    return { toys: p.toys, level: p.levelFor('balloon-math'), stars: p.starsFor('balloon-math'), voice: p.voice || p.music };
   });
-  page.on('pageerror', (err) => errors.push(`pageerror: ${err.message}`));
+  if (kept.toys.length !== 2 || kept.toys[0] !== 'panda' || kept.level !== 3 || kept.stars !== 3 || kept.voice) fail(`old save migrated badly: ${JSON.stringify(kept)}`);
+  old.errors.forEach((e) => fail(`migration ${e}`));
+  await old.context().close();
+  if (!failures.length) console.log('  ✓ new players, switching, sheets and save migration');
+}
 
-  /* ---- home screen ---- */
-  errors = [];
-  await page.goto(base, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(600);
-  const cardCount = await page.locator('.card').count();
-  if (cardCount !== GAMES.length) fail(`[${vp.name}] home shows ${cardCount} cards, expected ${GAMES.length}`);
-  else console.log(`  ✓ home: ${cardCount} game cards`);
-  errors.forEach((e) => fail(`[${vp.name}] home ${e}`));
+await Promise.all(VIEWPORTS.map(async (vp) => {
+  const page = await openPage(browser, { ...vp, save: veteran(GAMES) });
+  await page.goto(base);
+  await page.waitForFunction(() => window.kindercade?.game);
+  await page.waitForTimeout(1200);
+  const cards = await page.locator('.card').evaluateAll((els) => els.filter((el) => {
+    const r = el.querySelector('.card-label').getBoundingClientRect();
+    return r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
+  }).length);
+  if (cards !== GAMES.length) fail(`[${vp.name}] home shows ${cards} cards on screen, expected ${GAMES.length}`);
   if (WRITE_SHOTS) await page.screenshot({ path: join(SHOT_DIR, `${vp.name}-home.png`) });
 
-  /* ---- each game ---- */
   for (const game of targets) {
-    errors = [];
-    await page.goto(`${base}#/play/${game.id}`, { waitUntil: 'load' });
-    // Give the module time to download, boot, run entrance animations.
-    await page.waitForTimeout(1500);
-
-    let stats = await page.evaluate(CANVAS_STATS);
-    if (!stats.ok) { fail(`[${vp.name}] ${game.id}: ${stats.reason}`); continue; }
-    if (stats.colors < 12) fail(`[${vp.name}] ${game.id}: canvas looks blank (${stats.colors} distinct colours)`);
-
-    // Poke around: a grid of taps across the play area, exercising buttons,
-    // tiles and drag targets without knowing the layout.
-    const pts = [];
-    for (const fy of [0.35, 0.55, 0.78, 0.9]) {
-      for (const fx of [0.2, 0.38, 0.5, 0.62, 0.8]) {
-        pts.push([Math.round(vp.width * fx), Math.round(vp.height * fy)]);
-      }
-    }
-    for (const [x, y] of pts) {
-      await page.mouse.move(x, y);
-      await page.mouse.down();
-      await page.mouse.move(x + 2, y + 2);
-      await page.mouse.up();
-      await page.waitForTimeout(70);
-    }
-    // A drag, for the drag-and-drop games.
-    await page.mouse.move(vp.width * 0.3, vp.height * 0.85);
-    await page.mouse.down();
-    for (let i = 1; i <= 12; i++) {
-      await page.mouse.move(
-        vp.width * (0.3 + 0.25 * (i / 12)),
-        vp.height * (0.85 - 0.35 * (i / 12)),
-      );
-      await page.waitForTimeout(16);
-    }
-    await page.mouse.up();
-    await page.waitForTimeout(900);
-
-    stats = await page.evaluate(CANVAS_STATS);
-    if (!stats.ok) fail(`[${vp.name}] ${game.id}: after input, ${stats.reason}`);
-    else if (stats.colors < 12) fail(`[${vp.name}] ${game.id}: canvas blank after input`);
-
-    // The loop must still be alive: two samples a frame apart should differ
-    // somewhere, because everything in this arcade animates.
-    const alive = await page.evaluate(async () => {
-      const c = document.querySelector('#game-canvas');
-      // Compare whole downscaled frames. Sampling a fixed corner of the canvas
-      // gives false "frozen" reports: the engine letterboxes at wide aspect
-      // ratios, so a corner can be dead margin, and much of the motion in a
-      // settled game is a slow bob somewhere in the middle.
-      const small = document.createElement('canvas');
-      small.width = 96;
-      small.height = 64;
-      const sg = small.getContext('2d', { willReadFrequently: true });
-      const grab = () => {
-        sg.clearRect(0, 0, small.width, small.height);
-        sg.drawImage(c, 0, 0, small.width, small.height);
-        return sg.getImageData(0, 0, small.width, small.height).data;
-      };
-      const differs = (a, b) => {
-        for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return true;
-        return false;
-      };
-      let prev = grab();
-      // Several chances over ~1.5s rather than one 260ms window — a gentle
-      // idle animation can genuinely produce two identical frames in a row.
-      for (let attempt = 0; attempt < 5; attempt++) {
-        await new Promise((r) => setTimeout(r, 300));
-        const next = grab();
-        if (differs(prev, next)) return true;
-        prev = next;
-      }
-      return false;
-    });
-    if (!alive) fail(`[${vp.name}] ${game.id}: render loop appears frozen`);
-
-    errors.forEach((e) => fail(`[${vp.name}] ${game.id} ${e}`));
-    if (!errors.length && stats.ok && stats.colors >= 12 && alive) {
-      console.log(`  ✓ ${game.id} (${stats.colors} colours, animating)`);
-    }
+    page.errors.length = 0;
+    await page.evaluate((id) => { location.hash = `#/play/${id}/2`; }, game.id);
+    await page.waitForFunction((id) => window.kindercade.game?.meta.id === id && !window.kindercade.game.busy, game.id, { timeout: 60000 })
+      .catch(() => fail(`[${vp.name}] ${game.id}: never became playable`));
     if (WRITE_SHOTS) await page.screenshot({ path: join(SHOT_DIR, `${vp.name}-${game.id}.png`) });
-  }
 
-  await context.close();
-}
+    // Mash: a grid of taps below the HUD, then a drag from nowhere to nowhere.
+    for (const fy of [0.35, 0.55, 0.75, 0.9]) {
+      for (const fx of [0.12, 0.3, 0.5, 0.7, 0.88]) await page.mouse.click(vp.width * fx, vp.height * fy);
+    }
+    await page.mouse.move(vp.width * 0.4, vp.height * 0.85);
+    await page.mouse.down();
+    await page.mouse.move(vp.width * 0.6, vp.height * 0.4, { steps: 8 });
+    await page.mouse.up();
+    if (await page.locator('#hud-speak').isVisible()) await page.click('#hud-speak');
+    await page.waitForTimeout(600);
+
+    const stats = await page.evaluate(canvasStats);
+    if (stats.id !== game.id) fail(`[${vp.name}] ${game.id}: crashed out to "${stats.id}"`);
+    else if (stats.colors < 24) fail(`[${vp.name}] ${game.id}: canvas looks blank (${stats.colors} colours)`);
+    else if (!stats.alive) fail(`[${vp.name}] ${game.id}: render loop appears frozen`);
+    else if (!page.errors.length) console.log(`  ✓ [${vp.name}] ${game.id} (${stats.colors} colours, animating)`);
+    page.errors.forEach((e) => fail(`[${vp.name}] ${game.id} ${e}`));
+  }
+  await page.context().close();
+}));
 
 await browser.close();
 server.close();

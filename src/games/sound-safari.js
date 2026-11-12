@@ -1,318 +1,251 @@
 /**
- * Sound Safari — phonemic awareness.
+ * Sound Safari — phonemic awareness, from the back of a jeep.
  *
  * Hearing the separate sounds inside a spoken word is the strongest single
  * predictor of how easily a child learns to read, and it is an *ear* skill
- * before it is an eye skill. So the audio leads: the voice says the word, then
- * isolates the sound, and the pictures and letters are there to support it.
+ * before it is an eye skill. Three rules follow:
  *
- * Two rules follow from that, and the game lives or dies by both:
+ *   The answer is never written down. The sign shows "_ a t", so the animal
+ *   and the voice are the only way in.
  *
- *   The answer is never written down. The word appears with the letter being
- *   asked about left as an empty slot — "_ a t" — so the picture and the voice
- *   are the only route to the answer. Printing the whole word turns listening
- *   into copying.
+ *   Only words whose spelling matches their sound are used — see
+ *   `startsWithItsLetter` / `endsWithItsLetter` in the word data.
  *
- *   Only words whose spelling matches their sound are used. See
- *   `startsWithItsLetter` / `endsWithItsLetter` in the word data: "shoe" does
- *   not start with the sound of S, and asking would teach something false.
- *
- * Note also the split between what is spoken and what is shown — the voice says
- * the sound ("buh") while the tile shows the letter ("Bb"). The letter *name*
- * ("bee") is only used once the answer is in, to name what was just found.
+ *   No wrong answer may sound like the right one. C and K both say "kuh", so
+ *   they are never offered together.
  */
 
-import { Game } from '../core/engine.js';
-import { Button, drawSlot } from '../core/ui.js';
-import { candyRect, drawEmoji, bubbleText, softText, Palette, PX, px, stepAlpha } from '../core/art.js';
+import * as THREE from '../core/three.js';
+import { Game, V } from '../core/engine.js';
+import { Toy, block, slab } from '../core/toy.js';
+import { build } from '../core/kit.js';
+import { text3d } from '../core/glyphs.js';
+import { sky, ground, clouds, sun } from '../core/scenery.js';
+import { addWheels, CANDY } from '../core/props.js';
+import { bush } from '../models/nature.js';
 import { Ease } from '../core/anim.js';
-import { shuffle, pick, clamp, sampleAvoiding } from '../core/util.js';
+import { deck, pick, sample, shuffle, makeRng } from '../core/util.js';
 import {
-  WORDS, tierForLevel, LETTER_SOUND, LETTER_NAME, SOUND_LETTERS,
-  startsWithItsLetter, endsWithItsLetter, PRAISE, ENCOURAGE,
+  WORDS, LETTER_SOUND, LETTER_NAME, SOUND_LETTERS, startsWithItsLetter, endsWithItsLetter,
 } from '../data/words.js';
+
+const WILD = ['lion', 'tiger', 'zebra', 'elephant', 'monkey', 'giraffe', 'snake', 'frog', 'bear', 'panda', 'koala', 'owl', 'fox', 'duck', 'turtle', 'penguin'];
 
 /** Pairs a five-year-old routinely mixes up — used as deliberate distractors. */
 const CONFUSABLE = {
-  b: ['d', 'p'], d: ['b', 'p'], p: ['b', 'q', 'd'], q: ['p', 'g'],
-  m: ['n', 'w'], n: ['m', 'u'], w: ['m', 'v'], v: ['w', 'f'],
-  f: ['v', 't'], g: ['j', 'q'], j: ['g', 'y'], s: ['z', 'c'],
-  c: ['k', 's'], k: ['c', 'x'], z: ['s'], u: ['n', 'v'], t: ['f'],
+  b: 'dp', d: 'bp', p: 'bd', m: 'nw', n: 'mh', w: 'mv', v: 'wf', f: 'vt', g: 'jk', j: 'gy', s: 'zf', c: 'gs', k: 'gt', z: 's', t: 'fd', l: 'r', r: 'lw',
 };
+const LAP = 48;      // the background repeats every this many units
+const HOP = 16;      // …and the jeep covers this much between stops
 
 export default class SoundSafari extends Game {
-  static meta = {
-    id: 'sound-safari',
-    title: 'Sound Safari',
-    subject: 'spelling',
-    blurb: 'Which letter does it start with?',
-    emoji: '🦁',
-    tint: '#4cc9f0',
-  };
+  static meta = { id: 'sound-safari', tint: '#2fb0ee', music: 'safari' };
 
   init() {
-    this.maxLevel = 3;
-    this.roundsTotal = 8;
-    this.busy = false;
-    this.used = [];
-    this.cardSlide = 0;
-    this.flyer = null;
-    this.backdrop = { top: '#cdf3ff', bottom: '#e8fff0', hills: ['#9fe6c8', '#63cfae'] };
-    this.newRound();
+    this.roundsTotal = this.level === 1 ? 6 : 8;
+    this.view = { pos: V(0, 5, 17.5), look: V(0, 2.2, 0), fov: 30 };
+    this.light({ span: 10, sun: '#fff4dc' });
+    sky(this, '#fff0cf', '#bfe9ff', '#6fc8f7');
+    ground(this, { color: '#f2cf6a', hills: ['#e0b858', '#d9a850', '#eec870'] });
+    sun(this, [-10, 9.6, -24], 4.2);
+    clouds(this, { n: 4, y: [8, 11] });
+    this.trip = { position: V() };
+    this.buildSavanna();
+    this.buildJeep();
   }
 
-  /** Level 3 asks for the last sound instead of the first. */
-  get mode() { return this.level >= 3 ? 'end' : 'start'; }
-  get choiceCount() { return this.level === 1 ? 3 : 4; }
-
-  /* ------------------------------------------------------------ round setup */
-
-  /** Words for this level whose target letter really is the target sound. */
-  wordPool() {
-    const tier = tierForLevel(this.level === 3 ? 2 : this.level);
-    const safe = this.mode === 'start' ? startsWithItsLetter : endsWithItsLetter;
-    return WORDS.filter((w) => w.tier <= tier && safe(w.word));
-  }
-
-  newRound() {
-    const pool = this.wordPool();
-    const fresh = pool.filter((w) => !this.used.includes(w.word));
-    this.entry = pick(fresh.length ? fresh : pool);
-    this.used.push(this.entry.word);
-    if (this.used.length > Math.min(14, pool.length - 1)) this.used.shift();
-
-    const word = this.entry.word;
-    this.answerIndex = this.mode === 'start' ? 0 : word.length - 1;
-    this.answer = word[this.answerIndex];
-    this.choices = this.makeChoices(this.answer, word);
-    this.wrongTries = 0;
-    this.busy = false;
-    this.revealed = false;
-    this.cardSlide = 0;
-    this.flyer = null;
-
-    // The banner deliberately says "this", not the word — see the note above.
-    this.setPrompt(this.questionText(), { speak: false });
-    this.layout();
-    this.tweens.to(this, { cardSlide: 1 }, 0.45, { ease: Ease.outBack });
-    this.schedulePrompt(0.3);
-  }
-
-  questionText() {
-    return this.mode === 'start'
-      ? 'What sound does it start with?'
-      : 'What sound does it end with?';
-  }
-
-  /**
-   * Distractors must never *also* be a right answer for this word, and at level
-   * 2+ at least one is a letter the child is likely to confuse with the answer.
-   */
-  makeChoices(answer, word) {
-    const banned = new Set([word[0], word[word.length - 1]]);
-    const letters = new Set([answer]);
-
-    if (this.level >= 2) {
-      const tricky = (CONFUSABLE[answer] || []).filter((c) => !banned.has(c));
-      if (tricky.length) letters.add(pick(tricky));
+  buildSavanna() {
+    for (const lap of [0, 1]) {
+      const rng = makeRng(11);
+      const strip = build((b) => {
+        for (let i = 0; i < 7; i++) {
+          const x = (i / 7) * LAP + rng() * 3, z = -7 - rng() * 7, h = 2.6 + rng() * 1.2;
+          b.tube('#9a6238', [[x, 0, z], [x + 0.15, h * 0.6, z], [x - 0.2, h, z]], 0.16);
+          b.rod('#9a6238', [x + 0.1, h * 0.55, z], [x + 0.9, h, z], 0.1);
+          b.ball('#6fb83c', [x + 0.2, h + 0.3, z], [2.2, 0.55, 1.3]);
+          b.ball('#86cc4a', [x - 0.2, h + 0.7, z], [1.4, 0.4, 1]);
+        }
+        for (let i = 0; i < 46; i++) {
+          const x = rng() * LAP, z = rng() < 0.6 ? -6 + rng() * 4 : 5.4 + rng();
+          for (const a of [-0.4, 0, 0.4]) b.cone('#d9a83c', [x + a * 0.15, 0, z], 0.06, 0.42, { rot: [0, 0, -a], seg: 9 });
+        }
+      }, { detail: 0.6 });
+      this.scene.add(strip);
+      this.every(() => { strip.position.x = -(this.trip.position.x % LAP) - LAP / 2 + lap * LAP; });
     }
-    // Fill from letters the child has already met on a picture card before
-    // falling back to the rest of the alphabet, so the wrong answers are
-    // familiar shapes rather than a Q and an X they have never seen.
-    const ok = (c) => !banned.has(c) && !letters.has(c);
-    const familiar = SOUND_LETTERS.filter(ok);
-    const rest = 'abcdefghijklmnopqrstuvwxyz'.split('').filter((c) => ok(c) && !familiar.includes(c));
-    for (const c of [...sampleAvoiding(familiar, this.choiceCount, []), ...shuffle(rest)]) {
-      if (letters.size >= this.choiceCount) break;
-      letters.add(c);
-    }
-    return shuffle([...letters].slice(0, this.choiceCount));
   }
 
-  /**
-   * The question, as one queued sequence.
-   *
-   * These four phrases used to be fired off on the tween clock at fixed offsets
-   * and each one cancelled the one before it, so on a slower voice the child
-   * heard "ca—", "cat starts wi—", "kuh k—". Queueing means each phrase simply
-   * starts when the previous one has actually finished.
-   */
-  speakPrompt({ delay = 0 } = {}) {
-    const word = this.entry.word;
-    const sound = LETTER_SOUND[this.answer] || this.answer;
-    const verb = this.mode === 'start' ? 'starts with' : 'ends with';
-    return this.audio.say([
-      { text: word, rate: 0.72, gap: 0.35, delay },
-      { text: `${word} ${verb} ${sound}, ${sound}`, rate: 0.8, gap: 0.3 },
-      { text: 'Which letter?', rate: 0.95 },
-    ]);
+  buildJeep() {
+    const jeep = new THREE.Group();
+    jeep.add(build((b) => {
+      b.box('#58b84a', [0, 0.85, 0], [2.9, 0.75, 1.4], { r: 0.22, surf: 'shiny' });
+      b.box('#58b84a', [0.95, 1.25, 0], [0.95, 0.4, 1.3], { r: 0.18, surf: 'shiny' });
+      b.box('#bfe9ff', [0.5, 1.75, 0], [0.08, 0.7, 1.2], { rot: [0, 0, 0.2] });
+      b.ball('#fff3b0', [1.45, 0.95, 0.42], [0.07, 0.16, 0.16], { surf: 'glow' });
+      for (const x of [-0.9, -0.3, 0.3]) b.ball('#2f8a3c', [x, 0.85, 0.7], [0.2, 0.13, 0.02], { ao: false });
+    }, { ao: true }));
+    addWheels(this, jeep, [[-0.9, 0.45, 0.7], [0.9, 0.45, 0.7]], '#ffffff', this.trip);
+    this.jeep = new Toy(jeep, 2, { idle: 0.3 });
+    this.jeep.position.set(-4.35, 0, 0.6);
+    this.scene.add(this.jeep);
+    this.addPal([-0.45, 0.95, 0.1], { size: 1.75, hat: 'sun-hat', parent: jeep });
+    this.toy('camera', 0.62, [0.02, 1.32, 0.62], jeep);
   }
 
-  /** Visual only — the question is spoken for us. */
-  hintPulse() {
-    for (const b of this.buttons.buttons) b.pulse?.();
-  }
-
-  /* ---------------------------------------------------------------- layout */
-
-  layout() {
-    if (!this.choices) return;
-    const cardW = clamp(this.W * 0.3, 300, 400);
-    const cardH = clamp(this.H * 0.34, 240, 320);
-    this.card = { x: this.cx - cardW / 2, y: this.playTop + 4, w: cardW, h: cardH };
-
-    // The word, with the letter under question left as an empty slot. Sized to
-    // fit the longest word the level can throw up, so the row does not jump
-    // between rounds.
-    const letters = this.entry.word.split('');
-    const ls = clamp(Math.min((cardW - 56) / letters.length, 46), 22, 46);
-    const step = ls * 1.16;
-    const rowY = this.card.y + cardH - ls * 0.92;
-    const rowX = this.cx - (step * letters.length - (step - ls)) / 2;
-    this.wordSlots = letters.map((ch, i) => ({
-      ch, blank: i === this.answerIndex,
-      x: rowX + i * step, y: rowY - ls * 0.6, w: ls, h: ls * 1.2,
-    }));
-    this.blankSlot = this.wordSlots[this.answerIndex];
-
-    this.buttons.clear();
-    const n = this.choices.length;
-    const size = clamp(Math.min((this.W * 0.8) / n - 26, 168), 104, 168);
-    const gap = clamp(this.W * 0.03, 18, 40);
-    const startX = this.cx - (size * n + gap * (n - 1)) / 2;
-    const ty = this.card.y + this.card.h + clamp(this.H * 0.06, 34, 70);
-
-    this.choices.forEach((letter, i) => {
-      this.buttons.add(new Button({
-        x: startX + i * (size + gap), y: ty, w: size, h: size, r: 30,
-        // Both cases together: the same letter wears two shapes, and a new
-        // reader has to recognise each of them.
-        label: letter.toUpperCase() + letter,
-        fontSize: size * 0.4,
-        color: this.tint, id: `l${letter}`,
-        onTap: () => this.choose(letter),
-      }));
+  /** Drive on: the last stop slides away and a new one rolls in. */
+  async driveTo(stop) {
+    const old = this.stop, from = this.trip.position.x;
+    this.stop = stop;
+    stop.position.x = HOP;
+    this.scene.add(stop);
+    this.audio.honk();
+    let bump = 0;
+    await this.to(this.trip.position, { x: from + HOP }, 1.5, {
+      ease: Ease.inOutCubic,
+      onUpdate: (k) => {
+        if (old) old.position.x = -k * HOP;
+        stop.position.x = HOP - k * HOP;
+        if (k - bump > 0.16) { bump = k; this.jeep.hop(0.06, 0.18); this.fx.puff(this.at(V(-5.7, 0.2, 1)), 2, { color: '#ffe9c0' }); }
+      },
     });
-    this.tileSize = size;
+    if (old) this.remove(old);
   }
 
-  /* ---------------------------------------------------------------- answer */
+  /** Bushes with something hiding in each. Resolves once they have popped out. */
+  async arrive(names, size, gap, x0) {
+    const stop = new THREE.Group();
+    const spots = names.map((name, i) => {
+      const x = x0 + (i - (names.length - 1) / 2) * gap;
+      const mesh = build((b) => bush(b), { ao: true });
+      mesh.scale.setScalar(size * 0.98);
+      const cover = new Toy(mesh, size, { idle: 0 });
+      cover.position.set(x, 0, -0.5);
+      stop.add(cover);
+      return { name, x, cover };
+    });
+    await this.driveTo(stop);
+    this.audio.rustle();
+    spots.forEach((s) => s.cover.wiggle(0.8));
+    await this.wait(0.55);
+    const toys = spots.map((s, i) => {
+      const t = this.toy(s.name, size, [s.x, 0, -1], stop);
+      this.appear(t, i * 0.14);
+      this.jump(t, [s.x, 0, 0.9], { height: 1.6, dur: 0.55, delay: i * 0.14 }).then(() => this.audio.boing());
+      return t;
+    });
+    await this.wait(0.7 + names.length * 0.14);
+    return toys;
+  }
 
-  choose(letter) {
-    if (this.busy) return;
-    // The question may still be playing; the child has answered, so stop asking.
+  snap(toy) {
+    this.audio.shutter();
+    this.hud.flash();
+    this.hud.photo(this.engine.snapshot(toy.kind, 200));
+    this.win(toy, { quiet: true });
+    toy.hop(0.3).spin();
+  }
+
+  /* ----------------------------------------------------------------- rounds */
+
+  async play() {
+    const end = this.level === 4;
+    // "bel_" would print its own answer, so doubled endings sit the last level out.
+    const fair = end ? (w) => endsWithItsLetter(w) && !/(.)\1$/.test(w) : startsWithItsLetter;
+    const pool = WORDS.filter((w) => w.tier <= (this.level === 2 ? 1 : 2) && fair(w.word)).map((w) => w.word);
+    const next = deck(this.level === 1 ? WILD : pool);
+    for (let i = 0; i < this.roundsTotal; i++) {
+      if (this.level === 1) await this.spot(next());
+      else if (!end && i % 3 === 2) await this.whichStarts(next(), pool);
+      else await this.whichLetter(next(), end);
+    }
+    this.finish();
+  }
+
+  /** Level 1: listen for a name and find its owner. */
+  async spot(name) {
+    const toys = await this.arrive(shuffle([name, ...sample(WILD.filter((n) => n !== name), 2)]), 2.2, 2.55, 1.5);
+    this.prompt('Take a photo!', `Where is the ${name}? Take a photo!`);
+    const right = await this.choose(toys, toys.find((t) => t.kind === name), { wrong: (t) => [`That is the ${t.kind}.`, `Find the ${name}!`] });
+    this.snap(right);
+    const [letter] = this.row([block(name[0].toUpperCase(), { size: 1.2, color: this.tint })], { x: 1, z: 4.9 });
+    await this.talk([`${name}!`, `${name} starts with ${LETTER_NAME[name[0]]}.`], { min: 1.8 });
+    this.vanish(letter);
+  }
+
+  /** The word with a hole in it, on a wooden sign. */
+  sign(word, hole) {
+    const step = 0.92, g = new THREE.Group();
+    g.add(slab(word.length * step + 0.4, 1.36, 0.2, '#ffffff', 0.1));
+    [...word].forEach((ch, i) => {
+      const x = (i - (word.length - 1) / 2) * step;
+      const mark = i === hole ? slab(0.76, 1.06, 0.06, '#e2d9f7', 0.03) : text3d(ch, { height: 0.86, color: '#3f9bf0', shadow: false });
+      mark.position.set(x, i === hole ? 0.15 : 0.82, 0.14);
+      g.add(mark);
+      if (i === hole) g.slot = V(x, 0.82, 0.24);
+    });
+    g.position.set(1.3, 3.55, 0);
+    this.stop.add(g);
+    this.appear(g);
+    return g;
+  }
+
+  distractors(answer, word, n) {
+    const ok = (c) => c !== word[0] && c !== word[word.length - 1] && LETTER_SOUND[c] !== LETTER_SOUND[answer] && !(answer === 'x' && 'ks'.includes(c));
+    const tricky = this.level >= 3 ? [...(CONFUSABLE[answer] || '')].filter(ok) : [];
+    const first = tricky.length ? [pick(tricky)] : [];
+    return [...first, ...sample(SOUND_LETTERS.filter((c) => ok(c) && c !== first[0]), n - first.length)];
+  }
+
+  async whichLetter(word, end) {
+    const hole = end ? word.length - 1 : 0, answer = word[hole], sound = LETTER_SOUND[answer];
+    const verb = end ? 'ends' : 'starts';
+    const [toy] = await this.arrive([word], 2.7, 0, 1.3);
+    this.poke(toy, { r: 1.1, sound: 'squeak' });
+    const sign = this.sign(word, hole);
+    const letters = shuffle([answer, ...this.distractors(answer, word, this.level === 2 ? 2 : 3)]);
+    const tiles = this.row(letters.map((c, i) => block(c.toUpperCase() + c, { size: 1.15, width: 1.45, color: CANDY[i] })), { x: 0.2, z: 4.95, gap: 1.8 });
+    const helped = [{ text: word, rate: 0.72, gap: 0.35 }, { text: `${word} ${verb} with ${sound}, ${sound}`, rate: 0.8, gap: 0.3 }, 'Which letter?'];
+    // Level 2 pulls the sound out of the word; after that it is the child's job, until they need a hand.
+    this.prompt(`What sound does it ${end ? 'end' : 'start'} with?`, this.level === 2 ? helped
+      : [{ text: word, rate: 0.7, gap: 0.4 }, { text: `What sound does ${word} ${end ? 'end' : 'start'} with?`, rate: 0.9 }]);
+    const right = await this.choose(tiles, tiles[letters.indexOf(answer)], {
+      r: 0.75,
+      wrong: (t) => { this.speech = helped; return [{ text: `That one says ${LETTER_SOUND[t.label[1]]}.`, rate: 0.85, gap: 0.3 }, ...helped.slice(1)]; },
+    });
     this.audio.stopSpeech();
-    const btn = this.buttons.get(`l${letter}`);
-    const sound = LETTER_SOUND[letter] || letter;
+    tiles.forEach((t) => { if (t !== right) this.vanish(t); });
+    this.scaleTo(right, 0.4, 0.45);
+    await this.jump(right, sign.localToWorld(sign.slot.clone()).toArray(), { height: 1, dur: 0.45 });
+    this.remove(right);
+    const found = text3d(answer, { height: 0.86, color: '#ff4d78', shadow: false });
+    found.position.copy(sign.slot);
+    sign.add(found);
+    this.appear(found);
+    this.snap(toy);
+    await this.talk([
+      { text: `${word} ${verb} with ${sound}`, rate: 0.82, gap: 0.3, delay: 0.4 },
+      { text: `That is ${LETTER_NAME[answer]}`, rate: 0.9 },
+    ], { min: 2 });
+  }
 
-    if (letter !== this.answer) {
-      this.nudge(btn ? btn.cx : this.cx, btn ? btn.cy : this.cy);
-      this.audio.say([
-        { text: sound, rate: 0.75, gap: 0.25, delay: 0.3 },
-        { text: pick(ENCOURAGE), rate: 0.95 },
-      ]);
-      this.wrongTries++;
-      if (this.wrongTries >= 2) {
-        this.tweens.after(1.8, () => {
-          this.buttons.get(`l${this.answer}`)?.pulse();
-          this.audio.say([
-            { text: 'Listen', rate: 0.9, gap: 0.25 },
-            { text: `${LETTER_SOUND[this.answer]}, ${LETTER_SOUND[this.answer]}`, rate: 0.7, gap: 0.3 },
-            { text: `That is ${LETTER_NAME[this.answer] || this.answer}`, rate: 0.9 },
-          ]);
-        });
-      }
-      return;
+  /** The same skill turned round: here is the letter — who starts with it? */
+  async whichStarts(word, pool) {
+    const letter = word[0], sound = LETTER_SOUND[letter];
+    const others = [];
+    for (const w of shuffle(pool)) {
+      if (others.length < 2 && ![word, ...others].some((o) => LETTER_SOUND[o[0]] === LETTER_SOUND[w[0]])) others.push(w);
     }
-
-    this.busy = true;
-    this.roundsDone++;
-    this.buttons.buttons.forEach((b) => { b.enabled = false; });
-
-    // The winning letter flies up into the gap in the word and completes it.
-    const slot = this.blankSlot;
-    if (btn && slot) {
-      this.flyer = { letter, x: btn.cx, y: btn.cy, size: this.tileSize, alpha: 1 };
-      btn.hidden = true;
-      this.tweens.to(this.flyer, {
-        x: slot.x + slot.w / 2, y: slot.y + slot.h / 2, size: slot.h * 0.92,
-      }, 0.45, { ease: Ease.outCubic, onComplete: () => {
-        this.revealed = true;
-        this.flyer = null;
-        this.fx.sparkle(slot.x + slot.w / 2, slot.y + slot.h / 2, 10, { color: '#ffe9a8' });
-      } });
-    } else {
-      this.revealed = true;
-    }
-
-    this.cheer(this.card.x + this.card.w / 2, this.card.y + this.card.h / 2);
-    const verb = this.mode === 'start' ? 'starts with' : 'ends with';
-    // Sound first, then the letter's name — the sound is what was being
-    // listened for, the name is what the thing they tapped is called.
-    const said = this.audio.say([
-      { text: `${this.entry.word} ${verb} ${LETTER_SOUND[this.answer]}`, rate: 0.82, gap: 0.3, delay: 0.45 },
-      { text: `That is ${LETTER_NAME[this.answer] || this.answer}`, rate: 0.9, gap: 0.25 },
-      { text: this.entry.word, rate: 0.75 },
+    const toys = await this.arrive(shuffle([word, ...others]), 2.1, 2.55, 1.5);
+    const [tile] = this.row([block(letter.toUpperCase() + letter, { size: 1.2, width: 1.6, color: this.tint })], { x: 1, z: 4.9 });
+    this.prompt('Which one starts with this letter?', [
+      { text: `Which one starts with ${sound}?`, rate: 0.85, gap: 0.3 },
+      ...toys.map((t) => ({ text: t.kind, rate: 0.8, gap: 0.35, onStart: () => t.hop(0.25) })),
     ]);
-
-    // Wait for the sentence to finish rather than guessing how long it takes.
-    this.afterSpeech(said, { min: 2.2, max: 7 }).then(() => {
-      if (this.finished) return;
-      if (this.roundsDone >= this.roundsTotal) this.finishRound({ title: pick(PRAISE) });
-      else this.newRound();
+    const right = await this.choose(toys, toys.find((t) => t.kind === word), {
+      wrong: (t) => [{ text: `${t.kind} starts with ${LETTER_SOUND[t.kind[0]]}.`, rate: 0.85, gap: 0.3 }, { text: `Find ${sound}.`, rate: 0.85 }],
     });
-  }
-
-  /* ------------------------------------------------------------------ frame */
-
-  draw(ctx) {
-    const c = this.card;
-    const slide = Ease.outCubic(clamp(this.cardSlide, 0, 1));
-    // Entrance and idle bob snap to the texel grid so the card steps in like a
-    // sprite instead of gliding, and the fade lands in eighths.
-    const bob = px(Math.sin(this.t * 1.6) * 6);
-
-    ctx.save();
-    ctx.globalAlpha = stepAlpha(slide);
-    ctx.translate(0, px((1 - slide) * -80) + bob);
-    candyRect(ctx, c.x, c.y, c.w, c.h, PX * 2, '#ffffff', { depth: 12, gloss: false, stroke: this.tint, strokeWidth: 8 });
-    drawEmoji(ctx, this.entry.emoji, c.x + c.w / 2, c.y + c.h * 0.40, Math.min(c.w, c.h) * 0.54, { shadow: true });
-    this.drawWord(ctx);
-    ctx.restore();
-  }
-
-  /**
-   * The word with a hole in it. The letter being asked about is an empty slot
-   * until it has been found — the picture and the voice are the only way in.
-   */
-  drawWord(ctx) {
-    for (const s of this.wordSlots || []) {
-      const cx = s.x + s.w / 2;
-      const cy = s.y + s.h / 2;
-      if (s.blank && !this.revealed) {
-        this.drawBlankSlot(ctx, s);
-        continue;
-      }
-      // The found letter stays highlighted, so the answer is visible as part of
-      // the word rather than as a separate reward.
-      const found = s.blank && this.revealed;
-      softText(ctx, s.ch, cx, cy, s.h * 0.78, {
-        color: found ? this.tint : Palette.inkSoft,
-        weight: found ? 900 : 800,
-      });
-    }
-  }
-
-  /** The empty slot: the shared texel-dash well, dressed in this game's tint. */
-  drawBlankSlot(ctx, s) {
-    drawSlot(ctx, s.x, s.y, s.w, s.h, { fill: 'rgba(0,0,0,0.05)', stroke: this.tint });
-  }
-
-  /** The winning letter travels above the tiles on its way to the word. */
-  drawOverlay(ctx) {
-    if (!this.flyer) return;
-    bubbleText(ctx, this.flyer.letter, px(this.flyer.x), px(this.flyer.y), this.flyer.size * 0.6, {
-      fill: '#ffd76a', stroke: Palette.ink,
-    });
+    this.snap(right);
+    await this.talk({ text: `${sound}, ${sound}, ${word}!`, rate: 0.8, delay: 0.4 }, { min: 1.8 });
+    this.vanish(tile);
   }
 }

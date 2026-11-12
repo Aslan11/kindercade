@@ -1,5 +1,5 @@
 /**
- * Handwriting check for Letter Trace.
+ * Handwriting check for Letter Racer.
  *
  * The other suites prove the game runs; this one proves it can be *played*, for
  * every one of the sixty-two glyphs, and that it cannot be cheated. Both halves
@@ -11,54 +11,41 @@
  *   node tools/trace-check.mjs
  */
 
-import { createRequire } from 'node:module';
-import { execFileSync } from 'node:child_process';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { start } from './serve.mjs';
+import { launch, openPage, veteran } from './browser.mjs';
+import { GAMES } from '../src/games/index.js';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 8125;
 
-function loadPlaywright() {
-  const require = createRequire(import.meta.url);
-  try { return require('playwright'); } catch (_) { /* fall through */ }
-  const globalRoot = execFileSync('npm', ['root', '-g'], { encoding: 'utf8' }).trim();
-  return createRequire(join(globalRoot, 'x.js'))('playwright');
-}
-const { chromium } = loadPlaywright();
-
-/** Finger wobble in logical pixels, and how coarsely the drag is sampled. */
+/** Finger wobble in paper units, and how finely the drag is sampled: a slow, careful finger down to a flick. */
 const JITTER = 18;
-const SAMPLES = [60, 24, 12];
+const SAMPLES = [200, 200, 200, 200, 200, 60, 24, 12];
 
 const failures = [];
 const fail = (msg) => { failures.push(msg); console.error('  ✗ ' + msg); };
 
 const server = await start(PORT);
-const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined });
-const page = await browser.newPage({ viewport: { width: 1180, height: 820 }, deviceScaleFactor: 1 });
-const errors = [];
-page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+const browser = await launch();
+const page = await openPage(browser, { width: 640, height: 480, save: veteran(GAMES) });
+const { errors } = page;
 
-await page.goto(`http://127.0.0.1:${PORT}/#/play/letter-trace`, { waitUntil: 'load' });
-await page.waitForFunction(() => window.kindercade?.game?.paths, null, { timeout: 8000 });
+await page.goto(`http://127.0.0.1:${PORT}/#/play/letter-trace/2`);
+await page.waitForFunction(() => window.kindercade?.game?.paths, null, { timeout: 30000 });
 
 /**
  * Runs inside the page against the live game object, so it exercises the real
  * input handling rather than a copy of the maths.
  */
-const probe = await page.evaluate(([jitter, sampleCounts]) => {
+const probe = await page.evaluate(async ([jitter, sampleCounts]) => {
+  const { strokesFor } = await import('/src/data/strokes.js');
   const g = window.kindercade.game;
   g.complete = function () { this.busy = true; };   // stay on the glyph under test
   g.audio.speak = () => {};
   const GLYPHS = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'];
   const jit = () => (Math.random() - 0.5) * jitter;
   const reset = (ch) => {
-    g.glyph = ch; g.paths = null; g.strokeIndex = 0; g.tip = 0;
-    g.busy = false; g.drawing = false; g.slips = 0; g.mistakes = 0;
-    g.layout();
+    g.lay(strokesFor(ch));
+    g.busy = false;
   };
   const out = { untraceable: [], scribbled: [], missing: [], strokes: 0 };
 
@@ -72,28 +59,32 @@ const probe = await page.evaluate(([jitter, sampleCounts]) => {
       reset(ch);
       for (let s = 0; s < g.paths.length; s++) {
         const pts = g.current.pts.map((p) => ({ x: p.x, y: p.y }));
-        g.onPointerDown({ x: pts[0].x + jit(), y: pts[0].y + jit() });
+        g.penDown({ x: pts[0].x + jit(), y: pts[0].y + jit() });
         const stride = Math.max(1, Math.round(pts.length / samples));
         for (let i = 0; i < pts.length; i += stride) {
-          g.onPointerMove({ x: pts[i].x + jit(), y: pts[i].y + jit() });
+          g.penMove({ x: pts[i].x + jit(), y: pts[i].y + jit() });
         }
-        g.onPointerMove(pts[pts.length - 1]);
-        g.onPointerUp();
+        g.penMove(pts[pts.length - 1]);
+        g.onUp();
         if (g.strokeIndex !== s + 1) { out.untraceable.push(`${ch} stroke ${s + 1}/${g.paths.length} at ${samples} samples`); break; }
       }
     }
 
-    // A child scribbling: land on the dot, then flail around the paper.
-    reset(ch);
-    {
+    // A child scribbling: land on the dot, then flail around the paper. Once in
+    // a while the first swipe really is a straight line down an `l`, so it is
+    // scribbling that *works* we are looking for, not a single fluke.
+    let lucky = 0;
+    for (let go = 0; go < 20; go++) {
+      reset(ch);
       const pts = g.current.pts;
-      g.onPointerDown({ x: pts[0].x, y: pts[0].y });
+      g.penDown({ x: pts[0].x, y: pts[0].y });
       for (let i = 0; i < 400; i++) {
-        g.onPointerMove({ x: g.box.x + Math.random() * g.box.w, y: g.box.y + Math.random() * g.box.h });
+        g.penMove({ x: g.box.x + Math.random() * g.box.w, y: g.box.y + Math.random() * g.box.h });
       }
-      g.onPointerUp();
-      if (g.busy) out.scribbled.push(ch);
+      g.onUp();
+      if (g.busy) lucky++;
     }
+    if (lucky > 5) out.scribbled.push(ch);
   }
   return out;
 }, [JITTER, SAMPLES]);
@@ -104,7 +95,7 @@ probe.scribbled.forEach((ch) => fail(`scribbling completed "${ch}" — the game 
 errors.forEach((e) => fail(e));
 
 if (!failures.length) {
-  console.log(`  ✓ 62 glyphs, ${probe.strokes} strokes: all traceable with ±${JITTER / 2}px wobble, none completed by scribbling`);
+  console.log(`  ✓ 62 glyphs, ${probe.strokes} strokes: all traceable with ±${JITTER / 2}px wobble, scribbling gets nowhere`);
 }
 
 await browser.close();

@@ -1,0 +1,67 @@
+<!doctype html>
+<!--
+  Every model in the toy chest, on one page. For checking new models:
+    npm start, then http://localhost:8080/tools/gallery.html
+  ?only=cat,dog narrows it down; ?text=abc123 shows the 3D lettering.
+-->
+<meta charset="utf-8" />
+<title>Kindercade toy chest</title>
+<style>
+  body { margin: 0; background: #bfe6ff; font: 700 14px system-ui, sans-serif; color: #2c2340; }
+  #grid { display: flex; flex-wrap: wrap; }
+  figure { margin: 0; text-align: center; }
+  canvas { display: block; }
+</style>
+<div id="grid"></div>
+<script type="module">
+import * as THREE from '../src/core/three.js';
+import { createRenderer, light } from '../src/core/stage.js';
+import { instantiate, penWidth } from '../src/core/kit.js';
+import { text3d } from '../src/core/glyphs.js';
+import { MODELS, template } from '../src/models/index.js';
+
+const q = new URLSearchParams(location.search);
+const size = Number(q.get('size')) || 200;
+const gl = document.createElement('canvas');
+const renderer = createRenderer(gl);
+renderer.setSize(size, size, false);
+penWidth.value = 0.024;
+const scene = new THREE.Scene();
+light(scene, { shadows: false });
+const camera = new THREE.PerspectiveCamera(22, 1, 0.1, 50);
+camera.position.set(0, 1.15, 3.2);
+camera.lookAt(0, 0.48, 0);
+
+function shot(label, object) {
+  scene.add(object);
+  renderer.setClearColor(0, 0);
+  renderer.clear();
+  renderer.render(scene, camera);
+  scene.remove(object);
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  c.getContext('2d').drawImage(gl, 0, 0);
+  const fig = document.createElement('figure');
+  fig.append(c, label);
+  document.querySelector('#grid').append(fig);
+}
+
+if (q.get('text')) {
+  for (const ch of q.get('text')) {
+    const t = text3d(ch, { height: 0.6, color: '#ff6b8b' });
+    t.position.y = 0.55;
+    shot(ch, t);
+  }
+} else {
+  const names = q.get('only') ? q.get('only').split(',') : Object.keys(MODELS);
+  for (const name of names) {
+    const t0 = performance.now();
+    const t = template(name);
+    const tris = t.parts.reduce((s, p) => s + p.geo.index.count / 3, 0);
+    const { root } = instantiate(t);
+    root.position.y = (1 - t.size.y) / 2;
+    shot(`${name} ${(tris / 1000).toFixed(1)}k ${(performance.now() - t0).toFixed(0)}ms`, root);
+  }
+}
+document.body.dataset.ready = '1';
+</script>

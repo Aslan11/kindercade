@@ -1,92 +1,99 @@
 # 🌟 Kindercade
 
-A little arcade of learning games for a five-year-old, built to run beautifully
-on an iPad and hosted for free on GitHub Pages.
+A cel-shaded 3D arcade of learning games for three- to six-year-olds, built to
+run on an iPad and hosted for free on GitHub Pages.
 
-Nine games across three subjects — counting and arithmetic, letters and spelling,
-and puzzles — wrapped in one consistent, friendly world with a mascot, stars and
-a sticker book.
+Fifteen games across reading, maths and critical thinking, set on one little
+island. Each child picks a buddy who hosts every game, earns their own stars,
+and unwraps toys that come to live on the beach.
 
 ## The games
 
+Every game has four levels (Robot Road has eight). **Level 1 is pitched at a three-year-old**; older
+children start on level 2. Two stars on a level opens the next.
+
 ### 🔢 Numbers
 
-| Game | What it teaches |
-|---|---|
-| **Counting Critters** | One-to-one counting and numeral recognition to 20. Tap each critter to count it out loud, then tap the number. |
-| **Balloon Pop** | Addition and subtraction within 20, with the sum shown concretely as objects before the numerals take over. |
-| **Cookie Kitchen** | Ten frames and number bonds — the "make ten" skill that early arithmetic is built on. |
+| Game | What happens | Levels |
+|---|---|---|
+| **Critter Count** | Tap animals into a hay wagon whose seats are a ten frame. Count them all, load exactly *n*, or pick one kind out of a mixed field. | to 3 · to 5 · to 10 · to 20 |
+| **Balloon Pop** | The sum is acted out first — animals parachute in or float away — then pop the answer. Balloon party at half time. | colours & numerals · adding · taking away · within 20 |
+| **Cookie Shop** | Fill a customer's order, ring the bell, bake, and watch them scoff the lot. | to 4 · to 10 · make ten · teens with a box of ten |
+| **See-Saw** | Predict, then let gravity settle it. | big & small · more & fewer · bigger number · balance it |
+| **Frog Hop** | Cross the pond by landing on lily pads in order. | 1–5 · 1–10 and back · missing number · 2s, 5s, 10s |
 
 ### 🔤 Words
 
-| Game | What it teaches |
-|---|---|
-| **Sound Safari** | Phonemic awareness: hearing the first (and later the last) sound in a word and matching it to a letter. |
-| **Word Builder** | Spelling 3–5 letter words by dragging letters into place, with a hint always one tap away. |
-| **Letter Trace** | Letter formation — writing capitals, small letters and digits one stroke at a time, in the order and direction a teacher would teach. |
+| Game | What happens | Levels |
+|---|---|---|
+| **Sound Safari** | Ride the jeep, hear the sound, snap the photo. | find the animal · first sounds · confusable letters · last sounds |
+| **Word Train** | Load one letter per wagon; each says its sound. | match letters · 3 · 4 · 5 letters |
+| **Letter Racer** | Every letter is a road. Drive it in proper stroke order, laying rainbow paint. | lines & loops · capitals · small letters · digits |
+| **Word Fishing** | Hook the right catch. | letters · rhymes · read a word · sight words |
+| **Starry ABC** | Dot-to-dot to the tune of the alphabet song. | A–E · capitals · small letters · what comes next |
 
 ### 🧩 Puzzles
 
-| Game | What it teaches |
-|---|---|
-| **Memory Match** | Working memory, plus number↔quantity and uppercase↔lowercase pairing at higher levels. |
-| **Pattern Party** | Pattern recognition and sequencing, the root of algebraic thinking. |
-| **Jigsaw Garden** | Spatial reasoning and persistence, with real jigsaw-cut pieces. |
+| Game | What happens | Levels |
+|---|---|---|
+| **Magic Match** | Memory cards that spring to life. | 3 pairs · animals · numeral ↔ quantity · A ↔ a |
+| **Pattern Party** | Every dancer plays a note, so patterns are heard as well as seen. | AB · AAB · gaps in the middle · growing patterns |
+| **Jigsaw Garden** | Pick a picture, piece it together, and it comes alive. | 2–4 · 4–6 · 9–12 · 12–16 pieces |
+| **Robot Road** | Queue up arrows, press go, follow the footprints, debug. | drive · plan · obstacles · fetch the key first · find the bug · repeat an arrow · fix the number · loop a pattern |
+| **Sort Shop** | Things roll in on a conveyor and need a crate. | colour · shape · kind · two rules at once |
 
-Each game has three levels that unlock as stars are earned, and every round ends
-in a celebration — there is no way to lose, no timer, and no score to fall short
-of. Wrong answers get a warm "try again" and, after a couple of tries, the game
-shows the answer so a round always ends in success.
+There is no way to lose and no clock to beat. A wrong answer gets a warm "not
+quite" — usually with the mistake *shown*, like a plate of cookies that leaves
+gaps on the tray — and after two tries a pointing glove shows the way.
 
 ## Design notes
 
-**Built for a pre-reader.** Every instruction is spoken aloud as well as shown.
-Words are always paired with a picture. Nothing important is conveyed by text
-alone.
+**Built for pre-readers.** Every instruction is spoken. Nothing important is
+conveyed by text alone, and the on-screen text never gives an answer away.
 
-**Built for iPad fingers.** Nothing tappable is smaller than ~96 units on a
-900-unit-tall canvas, taps tolerate a lot of wobble, drags survive a finger
-sliding off the edge, and Safari's scroll, zoom and text-selection gestures are
-all suppressed inside a game.
+**Built for two (or four) kids.** Up to four players, each with a buddy, an age,
+their own progress and — under **⚙️ Settings** (press and hold) — a name for the voice to greet.
 
-**Built to last.** No frameworks, no bundler, no npm dependencies. Plain ES
-modules and Canvas 2D served straight from the repo. Structural art (buttons,
-panels, skies) is generated at runtime — vector shapes with real gradients and
-shading — while every creature, object and icon comes from a hand-made 16-bit
-pixel-art sprite atlas in `assets/sprites/` (five sheets plus eight jigsaw scene
-paintings), blitted with nearest-neighbour scaling so the pixels stay chunky and
-crisp on a Retina display. All sound is synthesised with the Web Audio API;
-speech uses the system voice.
+**Always worth replaying.** Stars are a best score per level, but every finished
+game also pours into a star jar, and a full jar is a present. There are 52 toys,
+seven of them hats for the buddy.
+
+**Built for iPad fingers.** Nothing tappable is under ~100 units on a
+900-unit-tall screen, taps fire the moment a finger lands, a resting palm cannot
+block input, and anything you can drag you can usually just tap.
+
+**No build step, no assets.** Plain ES modules served straight from the repo.
+The one dependency is [three.js](https://threejs.org) r170, vendored unmodified
+in `vendor/three/`. Every model is assembled at runtime from primitives
+(`src/models/`), letters are swept along the handwriting strokes in
+`src/data/strokes.js`, and all music and sound is synthesised. It needs WebGL 2
+(iPadOS 15 or later), and trades resolution for frame rate on slower devices.
 
 **Built to be listened to.** Every spoken line goes through one queue, so
-phrases follow each other instead of cutting each other off, and the voice is
-chosen by ranking what the device offers rather than taking the browser's
-default — which is usually one of the low-quality "compact" voices. Under
-**⚙️ Settings** a grown-up can pick a specific voice and set the talking speed.
-The best voices on an iPad are an opt-in download: **Settings → Accessibility →
+phrases follow each other instead of cutting each other off, the music ducks
+under the voice, and the voice is chosen by ranking what the device offers. The
+best voices on an iPad are an opt-in download: **Settings → Accessibility →
 Spoken Content → Voices**.
 
-**Works offline.** A service worker caches the arcade on first visit, so it keeps
-working on a plane or in the car.
+**Works offline.** A service worker caches the arcade on first visit.
 
 ## Running it
 
 ```bash
 npm start            # http://localhost:8080 — plain static server, same as Pages
-npm run check        # parse + contract checks (this is what CI runs)
-npm run smoke        # boots every game in Chromium; fails on blank or frozen screens
-npm run playthrough  # plays all nine games to the results screen and checks scoring
+npm run check        # parse + contract checks, builds every model (this is what CI runs)
+npm run smoke        # first-launch flow, then boots and mashes every game at three screen shapes
+npm run playthrough  # plays all 64 levels to the prize screen with real taps and drags
 npm run trace-check  # traces all 62 letter shapes, and tries to cheat at each
-npm test             # all four
+npm run robot-check  # fuzzes Robot Road's boards and hints (no browser)
+npm test             # all five
 npm run icons        # regenerate the app icons from tools/make-icons.mjs
 ```
 
-There is no build step. What is in the repository is what the browser runs.
-
-`check` is dependency-free and runs in CI. `smoke`, `playthrough` and
-`trace-check` drive a real Chromium via Playwright, so they run locally where a
-browser is available. Add `SHOTS=1` to the first two to write screenshots to
-`.smoke/`.
+`check` and `robot-check` are dependency-free. The other three drive a real browser via Playwright
+(set `CHROMIUM_PATH` to use something other than Google Chrome); add `SHOTS=1`
+to `smoke` or `playthrough` to write screenshots to `.smoke/`.
+`/tools/gallery.html` shows every model on one page.
 
 ## Deploying
 
@@ -103,29 +110,25 @@ The site then lives at `https://<user>.github.io/kindercade/`.
 1. Open the site in Safari.
 2. Tap **Share → Add to Home Screen**.
 
-It launches full screen with no browser chrome, in landscape, and works without a
-connection. Sound turns on with the first tap (iOS requires a real touch before
-it will play audio).
-
-Under **⚙️ Settings** there are grown-up controls for sound effects, the talking
-voice (including which system voice to use and how fast it talks), and erasing
-progress.
+It launches full screen with no browser chrome and works without a connection.
+Sound turns on with the first tap (iOS requires a real touch before it will play
+audio).
 
 ## Adding a game
 
-See [`docs/GAME-API.md`](docs/GAME-API.md). In short: drop a module in
-`src/games/`, export a class extending `Game`, and add an entry to
-`src/games/index.js` and the precache list in `sw.js`. `npm run check` will tell
-you if you missed a step.
+See [`docs/GAME-API.md`](docs/GAME-API.md).
 
 ## Layout
 
 ```
-index.html            shell: launcher, sticker book, settings
-styles/main.css       shell styles (the games are drawn on canvas)
-src/app.js            router + home screen
-src/core/             engine, art kit, audio, input, effects, UI, progress
-src/data/words.js     picture-word list, phonics and number data
+index.html            shell
+styles/main.css       HUD, sheets and home-screen cards
+src/app.js            router, players, toy box, settings
+src/home.js           the island
+src/core/             engine, modelling kit, toys, effects, HUD, audio, music, progress
+src/models/           every buddy, animal and object
+src/data/             word lists, phonics, handwriting strokes, robot puzzles
 src/games/            one module per game + the registry
-tools/                static server, checks, browser tests, icon generator
+vendor/three/         three.js r170 (MIT)
+tools/                static server, checks, browser tests, model gallery
 ```

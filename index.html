@@ -7,7 +7,7 @@
 <!-- iPad: fill the screen, never zoom, respect the notch/home indicator. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="description" content="A little arcade of beautiful learning games for young children: counting, adding, spelling and puzzles." />
-<meta name="theme-color" content="#ffd9a8" />
+<meta name="theme-color" content="#55b9f7" />
 <meta name="color-scheme" content="light" />
 
 <!-- Add-to-home-screen: launches full screen with no Safari chrome. -->
@@ -21,71 +21,52 @@
 <link rel="icon" href="assets/icon-192.png" sizes="192x192" />
 <link rel="apple-touch-icon" href="assets/icon-180.png" />
 <link rel="stylesheet" href="styles/main.css" />
+<link rel="modulepreload" href="vendor/three/three.module.min.js" />
 </head>
 <body>
 
+<!-- Everything you can see in 3D — the island and every game — is drawn here. -->
+<canvas id="game-canvas"></canvas>
+
 <!-- ─────────────────────────────  HOME  ───────────────────────────── -->
-<div id="home" class="screen">
-  <div class="sky" aria-hidden="true">
-    <span class="sky-band sky-mid"></span><span class="sky-band sky-low"></span>
-    <span class="cloud c1" data-sprite="cloud" data-sprite-size="176"></span>
-    <span class="cloud c2" data-sprite="cloud" data-sprite-size="128"></span>
-    <span class="cloud c3" data-sprite="cloud" data-sprite-size="152"></span>
-    <span class="cloud c4" data-sprite="cloud" data-sprite-size="104"></span>
-  </div>
-
+<div id="home" class="layer">
   <header class="topbar">
-    <div class="brand">
-      <canvas id="mascot" width="132" height="132" aria-hidden="true"></canvas>
-      <div class="brand-text">
-        <h1>Kindercade</h1>
-        <p id="greeting">Pick a game to play!</p>
-      </div>
-    </div>
-    <div class="topbar-actions">
-      <button class="chip stars" id="star-chip" type="button" aria-label="Stars earned">
-        <span class="chip-ico" data-sprite="icon-star" data-sprite-size="27">⭐️</span><span id="star-count">0</span>
-      </button>
-      <button class="chip" id="sticker-btn" type="button" aria-label="Sticker book">
-        <span class="chip-ico" data-sprite="icon-gift" data-sprite-size="27">🎁</span><span class="chip-label">Stickers</span>
-      </button>
-      <button class="chip" id="settings-btn" type="button" aria-label="Settings">
-        <span class="chip-ico" data-sprite="icon-gear" data-sprite-size="27">⚙️</span>
-      </button>
-    </div>
+    <h1 aria-label="Kindercade"></h1>
+    <div class="topbar-actions" id="actions"></div>
   </header>
-
-  <main id="shelves"></main>
-
-  <footer class="home-footer">
-    <p>Made for curious five-year-olds. <span id="install-hint"></span></p>
-  </footer>
+  <main id="cards"></main>
+  <p id="install-hint"></p>
 </div>
 
 <!-- ─────────────────────────────  GAME  ───────────────────────────── -->
-<div id="stage" class="screen" hidden>
-  <canvas id="game-canvas"></canvas>
-  <div id="rotate-hint" class="rotate-hint">
-    <div class="rotate-card">
-      <span class="rotate-ico" data-sprite="icon-rotate" data-sprite-size="62">🔄</span>
-      <strong>Turn your iPad sideways</strong>
-      <span>These games are best in landscape.</span>
-    </div>
+<div id="hud" class="layer"></div>
+
+<div id="rotate-hint" class="rotate-hint">
+  <div class="rotate-card">
+    <span class="rotate-ico" aria-hidden="true"></span>
+    <strong>Turn your screen sideways</strong>
+    <span>These games are best in landscape.</span>
   </div>
 </div>
 
 <!-- ────────────────────────────  DIALOGS  ─────────────────────────── -->
 <div id="overlay" class="overlay" hidden>
   <div class="sheet" role="dialog" aria-modal="true">
-    <button class="sheet-close" id="sheet-close" type="button" aria-label="Close">✕</button>
+    <span id="sheet-close"></span>
     <div id="sheet-body"></div>
   </div>
 </div>
 
-<div id="boot-tap" class="boot-tap" hidden>
-  <div class="boot-card"><span data-sprite="icon-speaker" data-sprite-size="24">🔈</span><strong>Tap anywhere to turn on sound</strong></div>
-</div>
+<div id="wipe" class="wipe shut" aria-hidden="true"></div>
 
+<!-- A fresh page can arrive with last version's scripts still in the offline
+     cache. Reload once, as soon as the new service worker has taken over. -->
+<script>
+  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.addEventListener('controllerchange', () => location.reload(), { once: true });
+    navigator.serviceWorker.getRegistration().then((r) => r && r.update()).catch(() => {});
+  }
+</script>
 <script type="module" src="src/app.js"></script>
 </body>
 </html>

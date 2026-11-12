@@ -17,11 +17,16 @@ const NOTE = {
   C6: 1046.5, D6: 1174.66, E6: 1318.51, G6: 1567.98,
 };
 
+/** The n-th note of C major pentatonic, starting from middle C. */
+const scaleNote = (n) => NOTE.C4 * 2 ** ((Math.floor(n / 5) * 12 + [0, 2, 4, 7, 9][n % 5]) / 12);
+
 class AudioKit {
   constructor() {
     this.ctx = null;
-    this.master = null;
+    this.master = null;   // sound effects
+    this.musicBus = null; // background music, ducked under speech
     this.muted = false;
+    this.musicOn = true;
     this.voiceOn = true;
     this.unlocked = false;
     this._voice = null;
@@ -52,10 +57,14 @@ class AudioKit {
         if (!Ctor) return;
         this.ctx = new Ctor();
         this.master = this.ctx.createGain();
-        this.master.gain.value = 0.5;
+        this.master.gain.value = this.muted ? 0 : 0.5;
         this.master.connect(this.ctx.destination);
+        this.musicBus = this.ctx.createGain();
+        this.musicBus.gain.value = 0;
+        this.musicBus.connect(this.ctx.destination);
       }
-      if (this.ctx.state === 'suspended') this.ctx.resume();
+      // iOS parks the context in 'interrupted' after a call or a trip to the lock screen.
+      if (this.ctx.state !== 'running') this.ctx.resume();
       // A silent blip fully "arms" audio on iOS.
       if (!this.unlocked) {
         const o = this.ctx.createOscillator();
@@ -70,11 +79,28 @@ class AudioKit {
     } catch (_) { /* audio is a nice-to-have; never let it break a game */ }
   }
 
+  /**
+   * iOS will not talk until one utterance has come from inside a *click* — a
+   * finger merely landing does not count — and ours all start from timers.
+   */
+  primeSpeech() {
+    try {
+      const u = new SpeechSynthesisUtterance(' ');
+      u.volume = 0;
+      speechSynthesis.speak(u);
+    } catch (_) { /* no speech on this device */ }
+  }
+
+  /** Sound effects only — talking and music each have a switch of their own. */
   setMuted(v) {
     this.muted = !!v;
     if (this.master) this.master.gain.value = this.muted ? 0 : 0.5;
-    if (this.muted) this.stopSpeech();
   }
+
+  setMusic(v) { this.musicOn = !!v; }
+
+  /** True while the voice has something to say (drives the buddy's mouth and ducking). */
+  get speaking() { return !!this._current; }
 
   setVoice(v) {
     this.voiceOn = !!v;
@@ -95,8 +121,8 @@ class AudioKit {
    * @param {number} o.at        offset from now, seconds
    * @param {number} o.slide     target freq to glide to (optional)
    */
-  tone({ freq = 440, dur = 0.18, type = 'sine', vol = 0.3, at = 0, slide = 0, attack = 0.008 }) {
-    if (!this.ctx || this.muted) return;
+  tone({ freq = 440, dur = 0.18, type = 'sine', vol = 0.3, at = 0, slide = 0, attack = 0.008, bus = null }) {
+    if (!this.ctx || (this.muted && !bus)) return;
     const t0 = this.ctx.currentTime + at;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
@@ -108,22 +134,24 @@ class AudioKit {
     gain.gain.exponentialRampToValueAtTime(clamp(vol, 0.0002, 1), t0 + attack);
     gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
 
-    osc.connect(gain).connect(this.master);
+    osc.connect(gain).connect(bus || this.master);
     osc.start(t0);
     osc.stop(t0 + dur + 0.05);
   }
 
   /** Short filtered noise burst — used for pops, whooshes and shuffles. */
-  noise({ dur = 0.12, vol = 0.2, at = 0, freq = 1200, q = 1, type = 'bandpass', sweep = 0 }) {
-    if (!this.ctx || this.muted) return;
+  noise({ dur = 0.12, vol = 0.2, at = 0, freq = 1200, q = 1, type = 'bandpass', sweep = 0, bus = null }) {
+    if (!this.ctx || (this.muted && !bus)) return;
     const t0 = this.ctx.currentTime + at;
-    const len = Math.max(1, Math.floor(this.ctx.sampleRate * dur));
-    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
-
+    // One second of static, made once and looped from a random spot.
+    if (!this._static) {
+      this._static = this.ctx.createBuffer(1, this.ctx.sampleRate, this.ctx.sampleRate);
+      const data = this._static.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    }
     const src = this.ctx.createBufferSource();
-    src.buffer = buf;
+    src.buffer = this._static;
+    src.loop = true;
     const filter = this.ctx.createBiquadFilter();
     filter.type = type;
     filter.frequency.setValueAtTime(freq, t0);
@@ -133,70 +161,126 @@ class AudioKit {
     gain.gain.setValueAtTime(vol, t0);
     gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
 
-    src.connect(filter).connect(gain).connect(this.master);
-    src.start(t0);
+    src.connect(filter).connect(gain).connect(bus || this.master);
+    src.start(t0, Math.random() * 0.9);
     src.stop(t0 + dur + 0.02);
   }
 
-  arpeggio(notes, { step = 0.075, dur = 0.26, type = 'triangle', vol = 0.26, at = 0 } = {}) {
-    notes.forEach((n, i) => {
-      const freq = typeof n === 'string' ? NOTE[n] : n;
-      this.tone({ freq, dur, type, vol, at: at + i * step });
-    });
+  /** A struck wooden bar: the voice of most of the arcade's little tunes. */
+  mallet(freq, { vol = 0.22, at = 0, dur = 0.42, bus = null } = {}) {
+    this.tone({ freq, dur, vol, at, bus, attack: 0.004 });
+    this.tone({ freq: freq * 4, dur: dur * 0.16, vol: vol * 0.3, at, bus, attack: 0.002 });
+  }
+
+  /** A small bright bell. */
+  chime(freq, { vol = 0.14, at = 0, dur = 0.8, bus = null } = {}) {
+    this.tone({ freq, dur, vol, at, bus, attack: 0.003 });
+    this.tone({ freq: freq * 2.76, dur: dur * 0.4, vol: vol * 0.35, at, bus, attack: 0.002 });
   }
 
   /* ---------------------------------------------------------------- sound cues */
 
   /** Generic light UI tap. */
-  tap() { this.tone({ freq: 880, dur: 0.06, type: 'sine', vol: 0.16 }); }
+  tap() { this.tone({ freq: 620, dur: 0.07, vol: 0.18, slide: 900 }); }
 
   /** Picking something up / starting a drag. */
-  pick() { this.tone({ freq: 520, dur: 0.09, type: 'sine', vol: 0.18, slide: 720 }); }
+  pick() { this.tone({ freq: 480, dur: 0.1, vol: 0.2, slide: 760 }); }
 
   /** Dropping something into place. */
   place() {
-    this.tone({ freq: 420, dur: 0.1, type: 'triangle', vol: 0.22, slide: 300 });
-    this.noise({ dur: 0.06, vol: 0.06, freq: 900 });
+    this.tone({ freq: 300, dur: 0.12, type: 'triangle', vol: 0.28, slide: 170 });
+    this.noise({ dur: 0.05, vol: 0.1, freq: 1100 });
   }
 
   pop() {
-    this.tone({ freq: 700, dur: 0.07, type: 'sine', vol: 0.22, slide: 1400 });
-    this.noise({ dur: 0.05, vol: 0.12, freq: 2200, q: 2 });
+    const k = 0.85 + Math.random() * 0.4;
+    this.tone({ freq: 520 * k, dur: 0.08, vol: 0.3, slide: 1500 * k });
+    this.noise({ dur: 0.09, vol: 0.28, freq: 2400, q: 0.8, sweep: 700 });
   }
 
-  whoosh() { this.noise({ dur: 0.3, vol: 0.1, freq: 1800, sweep: 300, q: 0.8 }); }
+  whoosh() { this.noise({ dur: 0.34, vol: 0.14, freq: 500, sweep: 2600, q: 1.2 }); }
+  swoop() { this.noise({ dur: 0.3, vol: 0.12, freq: 2200, sweep: 350, q: 1.2 }); }
 
-  /** Counting/step-up blip: pitch rises with `index`. */
-  step(index = 0) {
-    const scale = [NOTE.C5, NOTE.D5, NOTE.E5, NOTE.G5, NOTE.A5, NOTE.C6];
-    this.tone({ freq: scale[index % scale.length], dur: 0.12, type: 'triangle', vol: 0.2 });
+  /** A rubbery bounce. `k` shifts the pitch so a crowd does not boing in unison. */
+  boing(k = 0.9 + Math.random() * 0.4) {
+    this.tone({ freq: 190 * k, dur: 0.2, type: 'triangle', vol: 0.2, slide: 520 * k });
+    this.tone({ freq: 520 * k, dur: 0.12, vol: 0.08, slide: 380 * k, at: 0.14 });
   }
 
-  /** Correct answer — bright and short. */
-  correct() {
-    this.arpeggio(['E5', 'G5', 'C6'], { step: 0.06, dur: 0.22, vol: 0.24 });
-    this.tone({ freq: NOTE.E6, dur: 0.35, type: 'sine', vol: 0.1, at: 0.14 });
+  /** A squeaky-toy chirp for anything with a face. */
+  squeak(k = 0.85 + Math.random() * 0.5) {
+    this.tone({ freq: 760 * k, dur: 0.08, type: 'triangle', vol: 0.13, slide: 1150 * k });
+    this.tone({ freq: 1100 * k, dur: 0.1, type: 'triangle', vol: 0.11, slide: 820 * k, at: 0.08 });
+  }
+
+  giggle() { [0, 1, 2, 3].forEach((i) => this.tone({ freq: 900 - i * 70, dur: 0.07, type: 'triangle', vol: 0.12, slide: 1150 - i * 80, at: i * 0.085 })); }
+  plop() { this.tone({ freq: 240, dur: 0.13, vol: 0.28, slide: 620 }); }
+  flip() { this.noise({ dur: 0.1, vol: 0.14, freq: 1500, sweep: 3600, q: 1.6 }); }
+  rustle() { for (let i = 0; i < 5; i++) this.noise({ dur: 0.08, vol: 0.07, freq: 3200 + i * 300, q: 0.7, at: i * 0.06 }); }
+  ding() { this.chime(NOTE.E6, { vol: 0.24, dur: 1.2 }); }
+  coin() { this.tone({ freq: NOTE.B5, dur: 0.07, type: 'square', vol: 0.05 }); this.tone({ freq: NOTE.E6, dur: 0.3, type: 'square', vol: 0.05, at: 0.07 }); }
+  chuff() { this.noise({ dur: 0.16, vol: 0.13, freq: 900, sweep: 300, q: 0.6 }); }
+  honk() { for (const at of [0, 0.2]) for (const f of [392, 494]) this.tone({ freq: f, dur: 0.15, type: 'sawtooth', vol: 0.045, at, attack: 0.02 }); }
+
+  chomp() {
+    this.noise({ dur: 0.07, vol: 0.24, freq: 1500, q: 1.4 });
+    this.noise({ dur: 0.09, vol: 0.18, freq: 800, q: 1.2, at: 0.07 });
+    this.tone({ freq: 210, dur: 0.1, vol: 0.14, slide: 120, at: 0.04 });
+  }
+
+  shutter() {
+    this.noise({ dur: 0.04, vol: 0.3, freq: 3400, q: 1 });
+    this.noise({ dur: 0.07, vol: 0.24, freq: 1700, q: 1, at: 0.08 });
+  }
+
+  /** Steam whistle: toot tooooot. */
+  toot() {
+    [[0, 0.22], [0.3, 0.6]].forEach(([at, dur]) => {
+      for (const f of [587, 740, 880]) this.tone({ freq: f, dur, type: 'triangle', vol: 0.09, at, attack: 0.04 });
+      this.noise({ dur, vol: 0.04, freq: 3000, at });
+    });
+  }
+
+  /** A rising shimmer, for anything appearing out of nowhere. */
+  magic() { [0, 2, 4, 5, 7, 9, 10].forEach((n, i) => this.chime(scaleNote(n + 5), { at: i * 0.045, vol: 0.07, dur: 0.5 })); }
+
+  drumroll(dur = 0.9) {
+    for (let t = 0; t < dur; t += 0.045) this.noise({ dur: 0.05, vol: 0.05 + (t / dur) * 0.1, freq: 700, q: 0.8, at: t });
+  }
+
+  /** Counting/step-up note: climbs a pentatonic scale, so any run sounds like a tune. */
+  step(index = 0, o = {}) { this.mallet(scaleNote(index % 13), o); }
+
+  /** Correct answer. A streak lifts the key, so being on a roll is audible. */
+  correct(streak = 0) {
+    const k = 2 ** (Math.min(streak, 5) / 6);
+    [NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C6].forEach((f, i) => this.mallet(f * k, { at: i * 0.065, vol: 0.2 }));
+    this.chime(NOTE.E6 * k, { at: 0.26, vol: 0.1 });
   }
 
   /**
-   * Wrong answer — deliberately gentle. A five-year-old should hear "try again",
-   * never a buzzer. Two soft, low, warm notes.
+   * Wrong answer — deliberately gentle. A five-year-old should hear "whoops",
+   * never a buzzer.
    */
   wrong() {
-    this.tone({ freq: NOTE.A3, dur: 0.16, type: 'sine', vol: 0.16 });
-    this.tone({ freq: NOTE.F3, dur: 0.26, type: 'sine', vol: 0.14, at: 0.12 });
+    this.tone({ freq: 330, dur: 0.16, type: 'triangle', vol: 0.17, slide: 290 });
+    this.tone({ freq: 262, dur: 0.28, type: 'triangle', vol: 0.15, slide: 220, at: 0.14 });
   }
 
   /** Level complete. */
   fanfare() {
-    this.arpeggio(['C5', 'E5', 'G5', 'C6', 'E6'], { step: 0.09, dur: 0.4, vol: 0.24, type: 'triangle' });
-    this.arpeggio(['C4', 'G4'], { step: 0.09, dur: 0.9, vol: 0.12, type: 'sine', at: 0.36 });
-    this.sparkle(0.4);
+    [['C5', 0], ['C5', 0.12], ['C5', 0.24], ['E5', 0.36], ['G5', 0.6], ['E5', 0.78], ['G5', 0.9], ['C6', 1.08]].forEach(([n, at], i, all) => {
+      const dur = i === all.length - 1 ? 0.9 : 0.2;
+      this.tone({ freq: NOTE[n], dur, type: 'triangle', vol: 0.2, at });
+      this.tone({ freq: NOTE[n] / 2, dur, type: 'triangle', vol: 0.1, at });
+    });
+    this.sparkle(1.1);
   }
 
-  /** Star earned. */
-  star() {
-    this.arpeggio(['G5', 'C6', 'E6'], { step: 0.05, dur: 0.3, vol: 0.2 });
+  /** A star landing; each one a step higher. */
+  star(i = 0) {
+    this.chime(scaleNote(7 + i * 2), { vol: 0.2 });
+    this.tone({ freq: 160, dur: 0.14, vol: 0.2, slide: 80 });
   }
 
   sparkle(at = 0) {
@@ -358,7 +442,7 @@ class AudioKit {
   speak(text, {
     rate = 0.95, pitch = 1, interrupt = true, delay = 0, gap = 0, onStart = null,
   } = {}) {
-    if (!this.voiceOn || this.muted || !text || !('speechSynthesis' in window)) {
+    if (!this.voiceOn || !text || !('speechSynthesis' in window)) {
       return Promise.resolve();
     }
     this._primeVoices();
@@ -400,9 +484,9 @@ class AudioKit {
    * mid-word. Queueing means each phrase simply starts when the one before it
    * has actually finished.
    *
-   * @param {Array<string|object>} parts strings, or `{ text, rate, gap }`
+   * @param {Array<string|object>} parts strings, or `{ text, rate, gap, onStart }`
    */
-  say(parts, { interrupt = true } = {}) {
+  say(parts, { interrupt = true, delay = 0 } = {}) {
     const list = (Array.isArray(parts) ? parts : [parts]).filter(Boolean);
     let out = Promise.resolve();
     list.forEach((part, i) => {
@@ -411,8 +495,9 @@ class AudioKit {
         rate: o.rate ?? 0.95,
         pitch: o.pitch ?? 1,
         gap: o.gap ?? 0.18,
-        delay: o.delay ?? 0,
+        delay: o.delay ?? (i === 0 ? delay : 0),
         interrupt: interrupt && i === 0,
+        onStart: o.onStart,
       });
     });
     return out;
@@ -517,7 +602,7 @@ class AudioKit {
    * name, which is the opposite of what a child learning to spell needs.
    */
   spellOut(word, { onLetter = null, letterGap = 0.26, delay = 0.2 } = {}) {
-    if (!this.voiceOn || this.muted) return Promise.resolve();
+    if (!this.voiceOn) return Promise.resolve();
     String(word).split('').forEach((ch, i) => {
       this.speak(LETTER_NAME[ch.toLowerCase()] || ch.toUpperCase(), {
         rate: 0.85,
@@ -533,12 +618,15 @@ class AudioKit {
     return this.speak(word, { rate: 0.8, delay: 0.2, interrupt: false });
   }
 
-  /** Hard stop: clears the queue and invalidates anything a game had scheduled. */
-  stopSpeech() {
+  /**
+   * Clear the queue and invalidate anything a game had scheduled. `finishLine`
+   * spares the phrase being spoken right now.
+   */
+  stopSpeech({ finishLine = false } = {}) {
     this._speechEpoch++;
-    this._flush();
+    this._flush({ keepCurrent: finishLine });
   }
 }
 
 export const audio = new AudioKit();
-export { NOTE };
+

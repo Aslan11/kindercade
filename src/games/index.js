@@ -1,123 +1,96 @@
 /**
  * The game registry.
  *
- * Each entry is metadata plus a lazy `load()` so the launcher stays instant and
- * a game's code only downloads when it is actually opened. `tint` is the card's
- * flat fill and `tint2` its dithered bottom band (same for the shelf
- * `color`/`color2` pair) — no gradients anywhere in the 16-bit shell.
+ * Each entry is metadata plus a lazy `load()` so a game's code only downloads
+ * when it is actually opened. `levels` tells a grown-up what each level covers;
+ * the first is always pitched at a three-year-old.
  */
 
 export const GAMES = [
   /* ── Numbers ───────────────────────────────────────────────────────── */
   {
-    id: 'counting-critters',
-    title: 'Counting Critters',
-    subject: 'math',
-    emoji: 'ladybug',
-    blurb: 'Count the creatures, then tap the number.',
-    skill: 'Counting & number recognition to 20',
-    tint: '#ff8a4c',
-    tint2: '#ffc93c',
+    id: 'counting-critters', title: 'Critter Count', subject: 'math', tint: '#ff8a4c',
+    skill: 'Counting & number recognition to 20', levels: ['Up to 3', 'Up to 5', 'Up to 10', 'Up to 20'],
     load: () => import('./counting-critters.js'),
   },
   {
-    id: 'balloon-math',
-    title: 'Balloon Pop',
-    subject: 'math',
-    emoji: 'balloon',
-    blurb: 'Pop the balloon with the right answer.',
-    skill: 'Adding & subtracting to 20',
-    tint: '#ff6b8b',
-    tint2: '#ff9f1c',
+    id: 'balloon-math', title: 'Balloon Pop', subject: 'math', tint: '#ff6b8b',
+    skill: 'Adding & subtracting to 20', levels: ['Colours & numbers', 'Adding', 'Taking away', 'Big numbers'],
     load: () => import('./balloon-math.js'),
   },
   {
-    id: 'cookie-kitchen',
-    title: 'Cookie Kitchen',
-    subject: 'math',
-    emoji: 'cookie',
-    blurb: 'Fill the tray to bake the right number.',
-    skill: 'Number bonds & ten frames',
-    tint: '#e8913c',
-    tint2: '#ffd166',
+    id: 'cookie-kitchen', title: 'Cookie Shop', subject: 'math', tint: '#e8913c',
+    skill: 'Number bonds & ten frames', levels: ['Little orders', 'Fill the order', 'Make ten', 'Teen numbers'],
     load: () => import('./cookie-kitchen.js'),
+  },
+  {
+    id: 'see-saw', title: 'See-Saw', subject: 'math', tint: '#ffb52e',
+    skill: 'Comparing: bigger, more, fewer, equal', levels: ['Big & small', 'More & fewer', 'Bigger number', 'Balance it'],
+    load: () => import('./see-saw.js'),
+  },
+  {
+    id: 'frog-hop', title: 'Frog Hop', subject: 'math', tint: '#3dcc77',
+    skill: 'Number order & skip counting', levels: ['1 to 5', '1 to 10', 'Missing numbers', 'Skip counting'],
+    load: () => import('./frog-hop.js'),
   },
 
   /* ── Words ─────────────────────────────────────────────────────────── */
   {
-    id: 'sound-safari',
-    title: 'Sound Safari',
-    subject: 'spelling',
-    emoji: 'lion',
-    blurb: 'Which letter does it start with?',
-    skill: 'Beginning sounds & phonics',
-    tint: '#4cc9f0',
-    tint2: '#61e3c8',
+    id: 'sound-safari', title: 'Sound Safari', subject: 'spelling', tint: '#2fb0ee',
+    skill: 'Beginning sounds & phonics', levels: ['Find the animal', 'First sounds', 'Tricky letters', 'Last sounds'],
     load: () => import('./sound-safari.js'),
   },
   {
-    id: 'word-builder',
-    title: 'Word Builder',
-    subject: 'spelling',
-    emoji: 'letter-blocks',
-    blurb: 'Drag the letters to spell the picture.',
-    skill: 'Spelling 3–5 letter words',
-    tint: '#5b8cff',
-    tint2: '#8f7bff',
+    id: 'word-builder', title: 'Word Train', subject: 'spelling', tint: '#5b8cff',
+    skill: 'Spelling 3–5 letter words', levels: ['Match letters', '3 letters', '4 letters', '5 letters'],
     load: () => import('./word-builder.js'),
   },
   {
-    id: 'letter-trace',
-    title: 'Letter Trace',
-    subject: 'spelling',
-    emoji: 'pencil',
-    blurb: 'Follow the arrows to write the letter.',
-    skill: 'Letter formation & stroke order',
-    tint: '#00b8a9',
-    tint2: '#6fe3c4',
+    id: 'letter-trace', title: 'Letter Racer', subject: 'spelling', tint: '#00b8a9',
+    skill: 'Letter formation & stroke order', levels: ['Lines & loops', 'Big letters', 'Little letters', 'Numbers'],
     load: () => import('./letter-trace.js'),
+  },
+  {
+    id: 'word-fishing', title: 'Word Fishing', subject: 'spelling', tint: '#2a8fe0',
+    skill: 'Reading words, rhymes & sight words', levels: ['Catch a letter', 'Rhymes', 'Read a word', 'Sight words'],
+    load: () => import('./word-fishing.js'),
+  },
+  {
+    id: 'starry-abc', title: 'Starry ABC', subject: 'spelling', tint: '#7a5cf0',
+    skill: 'Alphabet order', levels: ['A to E', 'Big letters', 'Little letters', 'What comes next'],
+    load: () => import('./starry-abc.js'),
   },
 
   /* ── Puzzles ───────────────────────────────────────────────────────── */
   {
-    id: 'memory-match',
-    title: 'Memory Match',
-    subject: 'puzzle',
-    emoji: 'playing-cards',
-    blurb: 'Find the matching pairs.',
-    skill: 'Memory & matching',
-    tint: '#9b6cff',
-    tint2: '#c88cff',
+    id: 'memory-match', title: 'Magic Match', subject: 'puzzle', tint: '#9b6cff',
+    skill: 'Memory & matching', levels: ['Tiny pairs', 'Animals', 'Numbers', 'Letters'],
     load: () => import('./memory-match.js'),
   },
   {
-    id: 'pattern-party',
-    title: 'Pattern Party',
-    subject: 'puzzle',
-    emoji: 'diamond-sky',
-    blurb: 'What comes next in the pattern?',
-    skill: 'Patterns & logical thinking',
-    tint: '#ff8fd0',
-    tint2: '#ffb3e0',
+    id: 'pattern-party', title: 'Pattern Party', subject: 'puzzle', tint: '#f56fc0',
+    skill: 'Patterns & logical thinking', levels: ['First beats', 'Easy beats', 'Longer beats', 'Growing beats'],
     load: () => import('./pattern-party.js'),
   },
   {
-    id: 'jigsaw-garden',
-    title: 'Jigsaw Garden',
-    subject: 'puzzle',
-    emoji: 'puzzle-piece',
-    blurb: 'Slide the pieces to finish the picture.',
-    skill: 'Spatial reasoning & problem solving',
-    tint: '#3ddc97',
-    tint2: '#8ce8b8',
+    id: 'jigsaw-garden', title: 'Jigsaw Garden', subject: 'puzzle', tint: '#2fc77f',
+    skill: 'Spatial reasoning & problem solving', levels: ['Big pieces', 'Few pieces', 'More pieces', 'Lots of pieces'],
     load: () => import('./jigsaw-garden.js'),
+  },
+  {
+    id: 'robot-road', title: 'Robot Road', subject: 'puzzle', tint: '#ff7a59',
+    skill: 'Planning ahead & first coding',
+    levels: ['Drive', 'Plan a path', 'Obstacles', 'Treasure hunt', 'Find the bug', 'Repeat', 'Fix the number', 'Loops'],
+    load: () => import('./robot-road.js'),
+  },
+  {
+    id: 'sort-shop', title: 'Sort Shop', subject: 'puzzle', tint: '#f0a030',
+    skill: 'Sorting & classifying', levels: ['Colours', 'Shapes', 'Kinds of thing', 'Two rules'],
+    load: () => import('./sort-shop.js'),
   },
 ];
 
 export const gameById = (id) => GAMES.find((g) => g.id === id) || null;
 
-export const SHELVES = [
-  { subject: 'math', title: 'Numbers', emoji: 'icon-numbers', color: '#ff8a4c', color2: '#ffc93c' },
-  { subject: 'spelling', title: 'Words', emoji: 'icon-words', color: '#4cc9f0', color2: '#7b8cff' },
-  { subject: 'puzzle', title: 'Puzzles', emoji: 'icon-puzzles', color: '#9b6cff', color2: '#ff8fd0' },
-];
+/** The island's terraces, top to bottom. */
+export const SUBJECTS = ['math', 'spelling', 'puzzle'];

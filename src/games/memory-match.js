@@ -1,308 +1,175 @@
 /**
- * Memory Match — working memory, and quietly two other things.
+ * Magic Match — working memory, and quietly two other things.
  *
- * The twist is that the pairs are not always identical. Level 2 pairs a numeral
- * with a quantity, so remembering a card also means reading it as a number;
- * level 3 pairs uppercase with lowercase. Matching becomes the vehicle for the
- * correspondence, which is more useful than matching pictures alone.
+ * Whatever is under a card springs up off it and says its name. The twist is
+ * that pairs are not always identical: level 3 pairs a numeral with a
+ * quantity, and level 4 pairs a capital with its small letter, so matching
+ * becomes the vehicle for the correspondence.
  */
 
-import { Game } from '../core/engine.js';
-import { candyRect, drawEmoji, bubbleText, roundRect, PX, px } from '../core/art.js';
-import { getSprite } from '../core/sprites.js';
+import { Game, V } from '../core/engine.js';
+import { Toy } from '../core/toy.js';
+import { Builder, build, instantiate, Shapes } from '../core/kit.js';
+import { text3d } from '../core/glyphs.js';
+import { sky, starfield } from '../core/scenery.js';
 import { Ease } from '../core/anim.js';
-import { shuffle, pick, clamp, sample, pointInRect, shade } from '../core/util.js';
-import { COUNTABLES, numberWord, PRAISE } from '../data/words.js';
+import { range, sample, shuffle } from '../core/util.js';
+import { LETTER_NAME, numberWord } from '../data/words.js';
 
-const LEVEL_PAIRS = { 1: 4, 2: 6, 3: 8 };
-const GRID = { 4: [4, 2], 6: [4, 3], 8: [4, 4] };
-
-/**
- * The card backs are papered with `card-back-tile`, a seamlessly tileable 32×32
- * star motif. A canvas pattern needs the tile on its own, so the cell is copied
- * out of the sheet once and kept for the life of the page.
- */
-let backTile = null;
-
-function backTilePattern(ctx) {
-  if (!backTile) {
-    const s = getSprite('card-back-tile');
-    if (!s) return null;    // sheets not loaded (or missing) — caller falls back
-    const c = document.createElement('canvas');
-    c.width = s.w;
-    c.height = s.h;
-    const g = c.getContext('2d');
-    g.imageSmoothingEnabled = false;
-    g.drawImage(s.img, s.x, s.y, s.w, s.h, 0, 0, s.w, s.h);
-    backTile = c;
-  }
-  return ctx.createPattern(backTile, 'repeat');
-}
+const BOARDS = { 1: [3, 2], 2: [4, 3], 3: [4, 3], 4: [4, 4] };
+const PEEK = { 1: 3.2, 2: 2 };
+const ANIMALS = ['cat', 'dog', 'pig', 'cow', 'fox', 'bee', 'owl', 'frog', 'lion', 'duck', 'panda', 'monkey', 'unicorn', 'octopus', 'elephant', 'penguin', 'bunny', 'dinosaur'];
+const PLURAL = { fox: 'foxes', octopus: 'octopuses', bunny: 'bunnies' };
+const LEAN = -0.62;      // tip upright things back toward the camera
 
 export default class MemoryMatch extends Game {
-  static meta = {
-    id: 'memory-match',
-    title: 'Memory Match',
-    subject: 'puzzle',
-    blurb: 'Find the matching pairs.',
-    emoji: '🃏',
-    tint: '#9b6cff',
-  };
+  static meta = { id: 'memory-match', tint: '#9b6cff', music: 'magic' };
 
   init() {
-    this.maxLevel = 3;
-    this.pairs = LEVEL_PAIRS[this.level] || 4;
-    this.roundsTotal = this.pairs;
-    this.busy = false;
-    this.picked = [];
-    this.found = 0;
-    this.backdrop = { top: '#e6dcff', bottom: '#ffe6f4', hills: ['#c6b0f5', '#a98ce8'] };
-    this.buildBoard();
-    this.setPrompt('Find the matching pairs', { speech: 'Find two cards that go together.' });
+    const [cols, rows] = BOARDS[this.level];
+    this.roundsTotal = (cols * rows) / 2;
+    this.view = { pos: V(0, 13, 11.5), look: V(0, 0, -0.95), fov: 30 };
+    this.light({ span: 9, shade: '#b4a4ea' });
+    sky(this, '#5a3fb0', '#3d2a94', '#24166a');
+    starfield(this);
+    this.scene.add(build((b) => {
+      b.cyl('#7a55d6', [0, -0.4, 0.4], 9.5, 0.8, { seg: 48, scale: [1, 1, 0.72] });
+      b.cyl('#ffd23c', [0, -0.5, 0.4], 9.7, 0.7, { seg: 48, scale: [1, 1, 0.72] });
+      b.box('#ffd23c', [0.9, 0.2, -3.75], [9, 0.4, 1], { r: 0.16 });
+      b.both((s) => { for (let i = 0; i < 5; i++) b.cyl('#e0324a', [s * (8 + i * 0.85), 4, -5.5 + i * 0.5], 0.55, 14); });
+    }));
+    this.addPal([-4.75, 0, -3.1], { size: 1.9, hat: 'wizard-hat' }).rotation.x = -0.4;
+    this.deal(cols, rows);
   }
 
-  /* ------------------------------------------------------------ board setup */
-
-  buildBoard() {
-    const cards = [];
-    const addPair = (key, a, b, say) => {
-      cards.push({ key, face: a, say }, { key, face: b, say });
-    };
-
-    if (this.level === 1) {
-      for (const kind of sample(COUNTABLES, this.pairs)) {
-        addPair(kind.emoji, { type: 'emoji', value: kind.emoji }, { type: 'emoji', value: kind.emoji }, kind.name);
-      }
-    } else if (this.level === 2) {
-      const kind = pick(COUNTABLES);
-      for (const n of sample([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], this.pairs)) {
-        addPair(`n${n}`,
-          { type: 'number', value: n },
-          { type: 'quantity', value: n, emoji: kind.emoji },
-          numberWord(n));
-      }
-    } else {
-      // Letters chosen to look clearly different in the two cases.
-      const letters = sample('ABDEFGHKMNQRTY'.split(''), this.pairs);
-      for (const L of letters) {
-        addPair(`l${L}`,
-          { type: 'letter', value: L },
-          { type: 'letter', value: L.toLowerCase() },
-          `${L}, ${L.toLowerCase()}`);
-      }
+  faces() {
+    const n = this.roundsTotal;
+    const flat = (text, color) => () => { const t = text3d(text, { height: this.h * 0.56, color, ink: true, weight: 0.115 }); t.position.y = this.h * 0.2; return new Toy(t, this.h * 0.5); };
+    if (this.level <= 2) return sample(ANIMALS, n).map((a) => ({ key: a, both: `Two ${PLURAL[a] || `${a}s`}!`, faces: [0, 1].map(() => ({ say: a, make: () => new Toy(a, this.h * 0.82) })) }));
+    if (this.level === 3) {
+      return sample(range(9).map((i) => i + 1), n).map((v) => ({
+        key: v, both: `${numberWord(v)}!`,
+        faces: [{ say: numberWord(v), make: flat(String(v), '#ff4d78') }, { say: numberWord(v), make: () => this.dots(v), lie: true }],
+      }));
     }
-
-    this.cards = shuffle(cards).map((c, i) => ({
-      ...c, id: i, flip: 0, target: 0, matched: false, pop: 0, x: 0, y: 0, w: 0, h: 0,
+    // Letters whose two cases look clearly different.
+    return sample([...'abdefghkmnqrty'], n).map((c) => ({
+      key: c, both: `Big ${LETTER_NAME[c]}, little ${LETTER_NAME[c]}!`,
+      faces: [{ say: `big ${LETTER_NAME[c]}`, make: flat(c.toUpperCase(), '#ff4d78') }, { say: `little ${LETTER_NAME[c]}`, make: flat(c, '#2f8fe8') }],
     }));
   }
 
-  layout() {
-    if (!this.cards) return;
-    const [cols, rows] = GRID[this.pairs] || [4, 2];
-    const availW = this.W * 0.86;
-    const availH = this.H - this.playTop - 60;
-    const gap = clamp(Math.min(availW, availH) * 0.035, 12, 26);
-    const cw = Math.min((availW - gap * (cols - 1)) / cols, (availH - gap * (rows - 1)) / rows / 1.32);
-    const ch = cw * 1.32;
-    const boardW = cw * cols + gap * (cols - 1);
-    const boardH = ch * rows + gap * (rows - 1);
-    const ox = this.cx - boardW / 2;
-    const oy = this.playTop + (availH - boardH) / 2 + 10;
+  /** A quantity in tidy rows of three, so five *looks* like five. */
+  dots(n) {
+    const k = this.h * 0.27, rows = Math.ceil(n / 3);
+    return new Toy(build((b) => range(n).forEach((i) => {
+      const row = Math.floor(i / 3), inRow = Math.min(3, n - row * 3);
+      b.ball('#2f8fe8', [((i % 3) - (inRow - 1) / 2) * k * 1.15, 0.06, (row - (rows - 1) / 2) * k], [k * 0.42, 0.09, k * 0.42], { surf: 'shiny' });
+    })), this.h * 0.5, { idle: 0 });
+  }
 
-    this.cards.forEach((card, i) => {
-      const c = i % cols;
-      const r = Math.floor(i / cols);
-      card.x = ox + c * (cw + gap);
-      card.y = oy + r * (ch + gap);
-      card.w = cw;
-      card.h = ch;
+  deal(cols, rows) {
+    const h = this.h = rows === 2 ? 2.3 : rows === 3 ? 1.75 : 1.36;
+    const w = rows === 2 ? 2.3 : rows === 3 ? 1.95 : 1.8, gap = 0.26;
+    const b = new Builder({ ao: false });
+    b.box('#ffffff', [0, 0, 0], [w, 0.16, h], { r: 0.08 });
+    b.box('#ff6bb0', [0, 0.06, 0], [w - 0.16, 0.08, h - 0.16], { r: 0.04, ao: false });
+    b.pillow('#ffd23c', [0, 0.11, 0], Shapes.star(h * 0.3, h * 0.16), 0.06, { rot: [-Math.PI / 2, 0, 0] });
+    const design = this.design = b.bake();
+    const pairs = this.faces();
+    this.cards = shuffle(pairs.flatMap((p) => p.faces.map((f) => ({ ...f, pair: p })))).map((info, i) => {
+      const plate = instantiate(design, { receive: true }).root;
+      const card = new Toy(plate, 0.2, { idle: 0 });
+      Object.assign(card, info, { plate, hotAt: V(0, 0.1, 0) });
+      card.position.set(((i % cols) - (cols - 1) / 2) * (w + gap), 0.1, (Math.floor(i / cols) - (rows - 1) / 2) * (h + gap) + 0.95);
+      card.show = info.make();
+      card.show.position.set(0, 0.1, info.lie ? 0 : h * 0.16);
+      if (!info.lie) card.show.rotation.x = this.level > 2 ? -1 : LEAN;
+      card.show.visible = false;
+      card.add(card.show);
+      this.scene.add(card);
+      this.appear(card, 0.5 + i * 0.05);
+      return this.hot(card, { box: [w / 2, h / 2], flat: true, when: () => !card.faceUp, tap: () => this.turn(card) });
     });
+    this.open = [];
   }
 
-  /* ----------------------------------------------------------------- input */
+  async flip(card, up) {
+    card.faceUp = up;
+    card.hop(2.2, 0.3);
+    this.audio.flip();
+    if (!up) this.scaleTo(card.show, 0.001, 0.12).then(() => { card.show.visible = card.faceUp; });
+    await this.to(card.plate.rotation, { z: up ? Math.PI : 0 }, 0.28, { ease: Ease.inOutQuad });
+    if (!up) return;
+    card.show.visible = true;
+    await this.appear(card.show);
+  }
 
-  onTap(p) {
-    if (this.busy) return;
-    for (const card of this.cards) {
-      if (card.matched || card.target === 1) continue;
-      if (!pointInRect(p.x, p.y, card.x, card.y, card.w, card.h)) continue;
-      this.reveal(card);
-      return;
+  async play() {
+    await this.wait(0.8);
+    if (PEEK[this.level]) {
+      this.prompt('Look and remember', 'Look carefully!');
+      await Promise.all(this.cards.map((c) => this.flip(c, true)));
+      await this.wait(PEEK[this.level]);
+      await Promise.all(this.cards.map((c) => this.flip(c, false)));
     }
-  }
-
-  /** Visual only — the prompt is spoken for us. Nudge the unmatched cards. */
-  hintPulse() {
-    for (const card of this.cards) if (!card.matched) card.pop = 0.6;
-  }
-
-  reveal(card) {
-    card.target = 1;
-    this.audio.tap();
-    this.picked.push(card);
-    if (this.picked.length < 2) return;
-
-    // Two cards are down: lock the board until they resolve, so a fast tapper
-    // cannot flip a third and corrupt the pair.
-    this.busy = true;
-    const [a, b] = this.picked;
-    this.picked = [];
-
-    if (a.key === b.key) {
-      this.tweens.after(0.35, () => {
-        a.matched = b.matched = true;
-        a.pop = b.pop = 1;
-        this.found++;
-        this.roundsDone = this.found;
-        this.audio.correct();
-        this.fx.sparkle(a.x + a.w / 2, a.y + a.h / 2, 12, { color: '#ffe9a8' });
-        this.fx.sparkle(b.x + b.w / 2, b.y + b.h / 2, 12, { color: '#ffe9a8' });
-        this.audio.speak(a.say, { rate: 0.85 });
-        this.busy = false;
-        if (this.found >= this.pairs) this.win();
-      });
-    } else {
-      this.tweens.after(0.95, () => {
-        a.target = b.target = 0;
-        this.audio.wrong();
+    this.prompt('Find the pairs', 'Find two cards that go together.');
+    while (this.roundsDone < this.roundsTotal) {
+      await this.ask();
+      const [a, b] = this.open.splice(0);
+      await this.wait(0.75);
+      if (a.pair === b.pair) await this.matched(a, b);
+      else {
+        // Forgetting where a card was is the game, not a failure: no sad noises.
         this.mistakes++;
-        this.busy = false;
-      });
-    }
-  }
-
-  win() {
-    this.busy = true;
-    this.tweens.after(0.8, () => this.finishRound({ title: pick(PRAISE) }));
-  }
-
-  /* ------------------------------------------------------------------ frame */
-
-  update(dt) {
-    for (const c of this.cards) {
-      c.flip += (c.target - c.flip) * Math.min(1, dt * 12);
-      if (c.pop > 0) c.pop = Math.max(0, c.pop - dt * 2);
-    }
-  }
-
-  draw(ctx) {
-    for (const card of this.cards) this.drawCard(ctx, card);
-  }
-
-  /**
-   * The flip is a horizontal squeeze through zero width, swapping back for
-   * front at the halfway point — it reads as a real card turning over.
-   */
-  drawCard(ctx, card) {
-    const t = clamp(card.flip, 0, 1);
-    const squeeze = Math.abs(Math.cos(t * Math.PI));
-    const showFace = t > 0.5;
-    const pop = 1 + Ease.pulse(card.pop) * 0.14;
-    // The card rect snaps to the texel grid so resting art never sits on a
-    // sub-pixel seam; the squeeze itself is motion and may pass through it.
-    const x = px(card.x);
-    const y = px(card.y);
-    const w = px(card.w);
-    const h = px(card.h);
-    const cx = x + w / 2;
-    const cy = y + h / 2;
-
-    ctx.save();
-    ctx.globalAlpha = card.matched ? 0.625 : 1;   // an eighth — steppy 16-bit fade
-    ctx.translate(cx, cy);
-    ctx.scale(Math.max(0.02, squeeze) * pop, pop);
-    ctx.translate(-cx, -cy);
-
-    if (!showFace) {
-      this.drawBack(ctx, x, y, w, h);
-    } else {
-      candyRect(ctx, x, y, w, h, PX * 2, '#ffffff', {
-        depth: 8, gloss: false, stroke: card.matched ? '#3ddc97' : shade(this.tint, 0.4), strokeWidth: 6,
-      });
-      this.drawFace(ctx, card);
-    }
-    ctx.restore();
-  }
-
-  drawBack(ctx, x, y, w, h) {
-    candyRect(ctx, x, y, w, h, PX * 2, this.tint, { depth: 8 });
-    ctx.save();
-    roundRect(ctx, x + PX * 2, y + PX * 2, w - PX * 4, h - PX * 4, PX * 2);
-    ctx.clip();
-    // A little repeating star field on the card backs.
-    const step = w * 0.3;
-    const pattern = backTilePattern(ctx);
-    if (pattern) {
-      // Fill in a scaled space. The scale is a whole number so every texel of
-      // the 32px tile lands on whole logical pixels and never shimmers.
-      const k = Math.max(1, Math.round(step / backTile.width));
-      ctx.globalAlpha = 0.25;
-      ctx.imageSmoothingEnabled = false;
-      ctx.scale(k, k);
-      ctx.fillStyle = pattern;
-      ctx.fillRect(x / k, y / k, w / k, h / k);
-    } else {
-      // Sheets not loaded (or missing) — a sparse grid of pixel plus-shapes.
-      ctx.globalAlpha = 0.25;
-      ctx.fillStyle = '#ffffff';
-      const stepP = Math.max(px(step), PX * 4);
-      for (let yy = y; yy < y + h + stepP; yy += stepP) {
-        for (let xx = x; xx < x + w + stepP; xx += stepP) {
-          const off = (Math.round((yy - y) / stepP) % 2) * stepP * 0.5;
-          const sx = px(xx + off);
-          const sy = px(yy);
-          ctx.fillRect(sx, sy - PX, PX, PX * 3);
-          ctx.fillRect(sx - PX, sy, PX * 3, PX);
-        }
+        this.tries++;
+        a.show.wiggle(); b.show.wiggle();
+        this.pal.feel('think', 1);
+        await this.wait(0.65);
+        await Promise.all([this.flip(a, false), this.flip(b, false)]);
       }
     }
-    ctx.restore();
+    await this.wait(1);
+    this.finish();
   }
 
-  drawFace(ctx, card) {
-    const cx = card.x + card.w / 2;
-    const cy = card.y + card.h / 2;
-    const f = card.face;
-
-    if (f.type === 'emoji') {
-      drawEmoji(ctx, f.value, cx, cy, card.w * 0.62);
-    } else if (f.type === 'number') {
-      bubbleText(ctx, String(f.value), cx, cy, card.h * 0.5, { fill: this.tint, stroke: '#ffffff', lineWidth: 8 });
-    } else if (f.type === 'letter') {
-      bubbleText(ctx, f.value, cx, cy, card.h * 0.5, { fill: this.tint, stroke: '#ffffff', lineWidth: 8 });
-    } else if (f.type === 'quantity') {
-      this.drawQuantity(ctx, card, f);
-    }
+  turn(card) {
+    this.flip(card, true);
+    this.audio.speak(card.say);
+    if (this.open.push(card) === 2) this.resolve();
   }
 
-  /**
-   * Quantities are laid out in a tidy dice-like block, never scattered — the
-   * point is that five *looks* like five without recounting it.
-   */
-  drawQuantity(ctx, card, f) {
-    const n = f.value;
-    const cols = n <= 3 ? n : n <= 6 ? 3 : n <= 8 ? 4 : 5;
-    const rows = Math.ceil(n / cols);
-    const size = Math.min(card.w * 0.72 / cols, card.h * 0.66 / rows);
-    const startY = card.y + card.h / 2 - ((rows - 1) * size) / 2;
-    for (let i = 0; i < n; i++) {
-      const r = Math.floor(i / cols);
-      const c = i % cols;
-      // Centre a short final row so the block stays symmetrical.
-      const inRow = r === rows - 1 ? n - r * cols : cols;
-      const rowX = card.x + card.w / 2 - ((inRow - 1) * size) / 2;
-      drawEmoji(ctx, f.emoji, rowX + c * size, startY + r * size, size * 0.88);
-    }
+  /** A found pair takes a bow and hops up onto the trophy shelf. */
+  async matched(a, b) {
+    const slot = this.roundsDone, step = 8.2 / this.roundsTotal;
+    this.win(a.position.clone().lerp(b.position, 0.5));
+    this.audio.speak(a.pair.both, { delay: 0.2 });
+    a.show.hop(0.5).spin(); b.show.hop(0.5).spin();
+    await this.wait(0.7);
+    const keep = (a.lie ? b : a).show;
+    this.scene.attach(keep);
+    this.scaleTo(keep, Math.min(1.05, step * 0.95) / (this.h * 0.8), 0.5);
+    this.jump(keep, [0.9 + (slot - (this.roundsTotal - 1) / 2) * step, 0.4, -3.65], { height: 2, dur: 0.55 }).then(() => { keep.dancing = true; });
+    [a, b].forEach((c) => { this.fx.puff(this.at(c), 8, { color: '#e2d2ff' }); this.vanish(c); });
+    this.audio.magic();
+    this.cards = this.cards.filter((c) => c !== a && c !== b);
+    await this.wait(0.35);
   }
 
-  /**
-   * Forgetting where a card was is the game, not a failure — so the star
-   * thresholds here are far more generous than the engine default.
-   */
+  solution() {
+    const [first] = this.open;
+    return { tap: first ? this.cards.find((c) => c !== first && c.pair === first.pair) : this.cards[0] };
+  }
+
+  nudgeChoices() { this.cards.forEach((c, i) => { if (!c.faceUp) this.tweens.after(i * 0.04, () => c.hop(1.2, 0.3)); }); }
+
+  /** A long run of bad luck earns a helping hand. */
+  hint() { this.replayPrompt(); if (this.level === 1 || this.tries >= 4) this.point(this.solution()); }
+
+  destroy() { this.design.parts[0].geo.dispose(); }
+
   starsEarned() {
-    if (this.mistakes <= this.pairs) return 3;
-    if (this.mistakes <= this.pairs * 2.5) return 2;
-    return 1;
+    if (this.mistakes <= this.roundsTotal) return 3;
+    return this.mistakes <= this.roundsTotal * 2.5 ? 2 : 1;
   }
 }

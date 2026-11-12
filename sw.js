@@ -7,58 +7,66 @@
  * deploy is picked up on the next launch.
  */
 
-const VERSION = 'kindercade-v3';
+const VERSION = 'kindercade-v4';
 const CORE = [
   './',
   'index.html',
   'manifest.webmanifest',
   'styles/main.css',
+  'vendor/three/three.module.min.js',
   'src/app.js',
-  'src/core/engine.js',
-  'src/core/art.js',
-  'src/core/sprites.js',
-  'src/core/audio.js',
-  'src/core/input.js',
-  'src/core/fx.js',
-  'src/core/ui.js',
   'src/core/anim.js',
-  'src/core/util.js',
+  'src/core/audio.js',
+  'src/core/engine.js',
+  'src/core/fx.js',
+  'src/core/glyphs.js',
+  'src/core/hud.js',
+  'src/core/kit.js',
+  'src/core/music.js',
   'src/core/progress.js',
-  'src/data/words.js',
+  'src/core/props.js',
+  'src/core/results.js',
+  'src/core/scenery.js',
+  'src/core/stage.js',
+  'src/core/three.js',
+  'src/core/toy.js',
+  'src/core/util.js',
+  'src/data/robot.js',
   'src/data/strokes.js',
-  'src/games/index.js',
-  'src/games/counting-critters.js',
+  'src/data/words.js',
   'src/games/balloon-math.js',
   'src/games/cookie-kitchen.js',
-  'src/games/sound-safari.js',
-  'src/games/word-builder.js',
+  'src/games/counting-critters.js',
+  'src/games/frog-hop.js',
+  'src/games/index.js',
+  'src/games/jigsaw-garden.js',
   'src/games/letter-trace.js',
   'src/games/memory-match.js',
   'src/games/pattern-party.js',
-  'src/games/jigsaw-garden.js',
+  'src/games/robot-road.js',
+  'src/games/see-saw.js',
+  'src/games/sort-shop.js',
+  'src/games/sound-safari.js',
+  'src/games/starry-abc.js',
+  'src/games/word-builder.js',
+  'src/games/word-fishing.js',
+  'src/home.js',
+  'src/models/animals.js',
+  'src/models/buddies.js',
+  'src/models/food.js',
+  'src/models/index.js',
+  'src/models/nature.js',
+  'src/models/shapes.js',
+  'src/models/things.js',
   'assets/icon-192.png',
   'assets/icon-512.png',
-  // The 16-bit sprite atlas — without these there is no art on a plane.
-  'assets/sprites/pip.png',
-  'assets/sprites/icons.png',
-  'assets/sprites/pictures.png',
-  'assets/sprites/shapes.png',
-  'assets/sprites/game-bits.png',
-  'assets/sprites/scene-fox.png',
-  'assets/sprites/scene-turtle.png',
-  'assets/sprites/scene-train.png',
-  'assets/sprites/scene-whale.png',
-  'assets/sprites/scene-butterfly.png',
-  'assets/sprites/scene-castle.png',
-  'assets/sprites/scene-rocket.png',
-  'assets/sprites/scene-bee.png',
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(VERSION);
     // Add individually so one 404 cannot fail the whole install.
-    await Promise.all(CORE.map((url) => cache.add(url).catch(() => {})));
+    await Promise.all(CORE.map((url) => cache.add(new Request(url, { cache: 'reload' })).catch(() => {})));
     self.skipWaiting();
   })());
 });

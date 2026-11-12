@@ -1,177 +1,121 @@
 # Writing a Kindercade game
 
-Every game is a single ES module in `src/games/<id>.js` that default-exports a
-class extending `Game`. There is no build step and no dependencies — the file is
-served to the iPad exactly as written.
+A game is one ES module in `src/games/<id>.js` that default-exports a class
+extending `Game`. Add it to `src/games/index.js`, the precache list in `sw.js`
+and `SHOWS` in `src/home.js`; `npm run check` catches most missed steps.
 
 ```js
-import { Game } from '../core/engine.js';
+import { Game, V } from '../core/engine.js';
+import { numberBlock } from '../core/toy.js';
+import { sky, ground } from '../core/scenery.js';
 
 export default class MyGame extends Game {
-  static meta = {
-    id: 'my-game',          // must match the filename and the registry entry
-    title: 'My Game',
-    subject: 'math',        // 'math' | 'spelling' | 'puzzle'
-    blurb: 'One friendly sentence.',
-    emoji: '🎲',
-    tint: '#ff8a4c',        // accent colour used by HUD pips and effects
-  };
+  static meta = { id: 'my-game', tint: '#ff8a4c', music: 'farm' };
 
-  init()        { /* build state, once */ }
-  layout()      { /* all positioning — re-runs on rotate/resize */ }
-  update(dt)    { /* per-frame logic, dt in seconds */ }
-  draw(ctx)     { /* per-frame drawing of game content */ }
-  drawOverlay(ctx) { /* optional: drawn above this.buttons */ }
-  destroy()     { /* release anything init() acquired */ }
+  init() {                                   // build the world, once
+    this.roundsTotal = 6;
+    this.view = { pos: V(0, 5, 17), look: V(0, 2.4, 0), fov: 30 };
+    this.light({ span: 10 });
+    sky(this);
+    ground(this);
+    this.addPal([-4.5, 0, 2]);               // the child's buddy
+  }
+
+  async play() {                             // the whole game, top to bottom
+    for (let i = 0; i < this.roundsTotal; i++) {
+      const blocks = this.row([1, 2, 3].map((n) => numberBlock(n)));
+      this.prompt('Find the number', 'Find number two!');
+      const right = await this.choose(blocks, blocks[1]);
+      this.win(right);
+      await this.talk('Two!');
+      blocks.forEach((b) => this.vanish(b));
+    }
+    this.finish();
+  }
 }
 ```
 
-## Coordinate space
+## Framing
 
-The logical canvas is **always 900 units tall**; the width follows the device
-aspect ratio, clamped to 1100–1700. Never hard-code a width.
+Screen space is 9 units tall with the origin in the middle, and at least 12
+wide. **Keep everything that matters inside that 12 × 9 window**, and below the
+HUD (the top ~1.6 units). Wider screens see more scenery; there is no
+per-device layout to write. With the default camera one world unit at `z = 0` is
+about one screen unit, and things grow as they come nearer.
 
-| Property     | Meaning                                        |
-|--------------|------------------------------------------------|
-| `this.W`     | logical width (varies — read it in `layout()`) |
-| `this.H`     | logical height (always 900)                    |
-| `this.cx`    | `this.W / 2`                                   |
-| `this.playTop` | first y clear of the HUD (172)                |
-| `this.playH` | usable height below the HUD                    |
+`this.at(thing)` gives the screen position of an object or world point;
+`this.gap(a, b)` the on-screen distance between two.
 
-Compute every position from `this.W` / `this.H` inside `layout()`. The engine
-calls `layout()` after `init()` and again on every resize or rotation, so a game
-that follows this rule survives an iPad being turned sideways mid-round.
-
-## What the base class gives you
+## Toys
 
 ```js
-this.audio     // sound + speech        this.fx        // particles + shake
-this.tweens    // tweens + timers       this.buttons   // ButtonLayer for your buttons
-this.progress  // saved stars/levels    this.t         // seconds since the game started
-this.level     // 1..3, chosen by the player's progress
-this.maxLevel  // set this in init() if you have fewer than 3 levels
-this.roundsTotal / this.roundsDone   // drives the progress pips in the HUD
-this.mistakes  // increment via nudge(); drives the star rating
-this.tint      // accent colour from meta
+const duck = this.toy('duck', 1.4, [x, y, z]);   // any name in src/models/
+duck.hop(); duck.boing(); duck.wiggle(); duck.spin();
+duck.dancing = true; duck.float = 0.1; duck.wear('crown');
+
+block('a'), numberBlock(3, { dots: true }), slab(w, h, d, color)   // core/toy.js
+text3d('cat', { height: 0.8, color })                              // core/glyphs.js
+build((b) => { b.box(…); b.ball(…); b.tube(…); })                  // core/kit.js
+new Toy(anyObject3D, size)                                         // give anything the same bounce
 ```
 
-### Talking to the child
+Don't hang game state on a name three.js already uses (`up`, `id`, `parent`,
+`children`, `scale`…).
 
-The player **cannot read yet**. Every instruction must be spoken.
+New models go in `src/models/`; check them at `/tools/gallery.html`.
+
+## Motion and timing
 
 ```js
-this.setPrompt('How many bees?');                      // shows + speaks it
-this.setPrompt('Spell it!', { speech: 'Spell the word cat' });
-this.audio.speak('seven');                             // one-off speech
-this.audio.spellOut('cat');                            // c — a — t — cat
+await this.jump(obj, [x, y, z]);   await this.moveTo(obj, [x, y, z], 0.4);
+await this.appear(obj);            await this.vanish(obj);    // also removes it
+await this.wait(0.5);              this.every((dt, t) => …);
 ```
 
-The HUD's 🔊 button re-speaks the current prompt automatically. Override
-`hintPulse()` to also wiggle whatever the child should touch next.
+Never use `setTimeout`, and never `await` an `audio` promise directly. The
+helpers above and `talk()` / `settle()` run on the game's clock, so leaving a
+game simply stops its `play()` where it stands.
 
-The **opening line belongs to the engine**: a `setPrompt` inside `init()` is
-shown but not spoken, and the prompt goes out a beat later so it does not land
-on top of the tap that started the game. If your first round wants to hold its
-line back further — or your prompt is a spoken sequence rather than one line —
-schedule it with `this.schedulePrompt(0.3)` rather than a bare timer, so the
-engine knows not to speak a second, colliding copy:
+## Touch
 
 ```js
-this.setPrompt('Spell the word', { speak: false });
-this.schedulePrompt(0.3);          // calls speakPrompt() on the game clock
+await this.choose(toys, right, { wrong: (toy) => 'what to say' });   // the everyday question
+this.hot(obj, { r: 0.7, tap: () => … });                             // anything else
+this.hot(obj, { lift, drop });                                       // draggable
+this.poke(obj);                                                      // scenery that wiggles
+await this.ask();  …  this.resolve();                                // hand over control, take it back
 ```
 
-Speech is queued, never layered: each line starts when the one before it has
-actually finished. `audio.speak(text, { delay })` still clears anything waiting
-behind it, but a line already speaking gets to finish its sentence first.
+Taps on answers are ignored while `this.busy`; `ask()` clears it and `resolve()`
+sets it.
 
-### Feedback
+## Talking
 
 ```js
-this.cheer(x, y, '+1');   // chime + sparkles + star burst
-this.nudge(x, y);         // gentle low tone + small puff; counts a mistake
-this.finishRound({ title: 'You did it!' });  // stars, confetti, results panel
+this.prompt('Spell the word', ['cat', 'Can you spell cat?']);   // shown, spoken
+await this.talk('Well done!', { min: 1 });
 ```
 
-`finishRound` handles scoring, saving, unlocking the next level and showing the
-Home / Again / Next buttons. Call it exactly once, when the last round is done.
+The first argument is for a grown-up; the second is what the child hears and
+what 🔊 repeats. Keep them apart whenever the text would give the answer away.
 
-### Timing
+## Feedback and hints
 
-```js
-await this.tweens.to(token, { x: 300, y: 200 }, 0.35, { ease: Ease.outBack });
-this.tweens.after(0.6, () => this.nextQuestion());
-await this.tweens.wait(0.4);
-```
-
-Never use `setTimeout` for game logic — `this.tweens` is stepped by the engine
-and torn down with the game, so a timer can't fire into a dead scene.
-
-### Input
-
-```js
-onPointerDown(p) {}   // p = { x, y } in logical units
-onPointerMove(p) {}
-onPointerUp(p) {}
-onTap(p) {}           // fired on lift when the finger barely moved
-```
-
-Buttons added to `this.buttons` are routed automatically — those callbacks only
-fire when nothing else consumed the touch — and are drawn for you, above
-whatever `draw()` painted. Use `DragController` from `../core/input.js` for
-drag-and-drop.
-
-## Drawing
-
-Import from `../core/art.js`:
-
-```js
-candyRect(ctx, x, y, w, h, r, color, { pressed, glow, stroke })
-candyCircle(ctx, cx, cy, r, color, { gloss, glow })
-drawEmoji(ctx, 'bee', x, y, size, { rotate, alpha, shadow })  // sprite name or emoji
-bubbleText(ctx, 'Hello', x, y, size, { fill, stroke })
-softText, glassPanel, roundRect, starPath, sparklePath, blobPath, cloudPath
-goldStar, drawPip, drawBackdrop, vGrad, radial, Palette
-```
-
-The 16-bit atlas itself lives in `../core/sprites.js`:
-
-```js
-drawSprite(ctx, 'balloon-pink', x, y, size, { rotate, alpha, shadow })
-hasSprite('cookie-1')      // true once the sheet is decoded
-getSprite('card-back-tile') // { img, x, y, w, h } source rect, or null
-loadScene('fox')            // Promise<Image|null> — jigsaw scene paintings
-```
-
-`drawBackground(ctx)` paints the shared sky by default. Override it for a
-different scene, or tune it with `this.backdrop = { top, bottom, hills }` in
-`init()`.
-
-Effects live on `this.fx`:
-
-```js
-this.fx.confetti(x, y, 60)     this.fx.sparkle(x, y, 14)
-this.fx.starBurst(x, y, 18)    this.fx.ring(x, y, { r1: 160 })
-this.fx.burstEmoji(x, y, '🎈') this.fx.puff(x, y)
-this.fx.floatText(x, y, '+1')  this.fx.addShake(6)
-```
+- `win(where)` — chime, stars, streak, and one pip of the progress bar.
+- `miss(obj, line)` — gentle, counts a mistake, and points at the answer after two.
+- `demonstrate(async () => …)` — act out *why* an answer was wrong, then hand back.
+- `solution()` — `{ tap: thing }` or `{ drag: [from, …, to] }`. `choose()` handles
+  it for you; otherwise override it. The hint glove **and the test suite** use it.
+- `hint()` — runs after seven idle seconds. It repeats the prompt by default;
+  point at `solution()` too if that is no spoiler (it usually isn't on level 1).
+- `finish()` — saves, unlocks, and runs the prize ceremony. Call it once.
 
 ## Rules for this arcade
 
-1. **All pictorial art comes from the sprite atlas** (`assets/sprites/`, see
-   `src/core/sprites.js`). `drawEmoji` accepts a sprite name (`'fox'`,
-   `'icon-home'`) or a legacy emoji character — both resolve to 16-bit pixel
-   art, with the emoji glyph as a fallback while sheets load. New sprites must
-   be added to the atlas sheets, the manifest, and the service-worker precache;
-   never hotlink external assets.
-2. **Nothing tappable is smaller than ~96 logical units.** Fingers are blunt.
-3. **Failure is never punishing.** No timers, no lives, no losing. A wrong
-   answer gets a warm "try again" and the child may retry immediately.
-4. **Three levels.** `this.level` is 1–3, easiest to hardest; level 2 unlocks
-   after earning 2+ stars on level 1, and so on.
-5. **Six to eight rounds** per play — long enough to learn, short enough to
-   finish before attention runs out.
-6. **Speak everything.** Prompts, numbers, words, praise.
-7. **Wrong answers should teach.** Where it is cheap to do so, show the right
-   answer after a couple of misses rather than looping forever.
+1. **Four levels** (or eight, as two rows in the picker), and the first is for a three-year-old.
+2. **Failure is never punishing.** No timers, no lives, no losing.
+3. **Wrong answers should teach.** Where it is cheap, show *why* it was wrong.
+4. **Speak everything.** The player cannot read yet.
+5. **Something should happen.** A right answer moves the world along — the train
+   leaves, the bear eats, the see-saw thumps.
+6. **Two or three minutes** per play.
